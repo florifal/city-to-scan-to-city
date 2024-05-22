@@ -157,16 +157,6 @@ class FlightPath:
     def xml_string(self):
         return self._xml_string
 
-    @classmethod
-    def parse_from_file(cls, filepath):
-        """Parse a flight path XML file created using pyhelios.utils.flight_planner, which means that it does not
-        have a root element. The file content is therefore wrapped in a root element before creating an
-        ElementTree.Element."""
-        parser = eT.XMLParser(target=eT.TreeBuilder(insert_comments=True))
-        with open(filepath) as f:
-            flight_plan_element = eT.fromstringlist(["<root>", f.read(), "</root>"], parser)
-        return flight_plan_element
-
     def compute_waypoints(self):
         """Compute flight path waypoints using pyhelios.utils.flight_planner."""
         self.waypoints, _, _ = flight_planner.compute_flight_lines(
@@ -218,32 +208,19 @@ class FlightPath:
         eT.indent(self.tree, "    ")
 
     def create_xml_string(self, using_helios_flight_planner=False):
-        """Create a string representation of flight path XML if necessary. Unavoidable if using
-        pyhelios.utils.flight_planner."""
-        if using_helios_flight_planner:
-            self._xml_string = flight_planner.write_legs(
-                self.waypoints, self.altitude, self.scanner_settings_id, self.velocity, self.trajectory_time_interval,
-                self.always_active
-            )
-        else:
-            if self.tree is None:
-                self.create_element_tree()
-            self._xml_string = eT.tostring(self.tree.getroot(), encoding="unicode", xml_declaration=False)
+        """Create a string representation of flight path XML if necessary."""
+        if self.tree is None:
+            self.create_element_tree()
+        self._xml_string = eT.tostring(self.tree.getroot(), encoding="unicode", xml_declaration=False)
 
-    def write_flight_path_file(self, using_helios_flight_planner=False):
+    def write_flight_path_file(self):
         """Write flight path XML to destination filepath."""
         if self.filepath is None:
             raise ValueError("Scene filepath must be defined before writing scene file.")
 
-        if using_helios_flight_planner:
-            if self.xml_string is None:
-                self.create_xml_string()
-            with open(self.filepath, "w") as f:
-                f.write(self.xml_string)
-        else:
-            if self.tree is None:
-                self.create_element_tree()
-            self.tree.write(self.filepath, encoding="UTF-8", xml_declaration=False)
+        if self.tree is None:
+            self.create_element_tree()
+        self.tree.write(self.filepath, encoding="UTF-8", xml_declaration=False)
 
 
 class Survey:
@@ -281,7 +258,7 @@ class Survey:
     def read_template(cls):
         return parse_xml_with_comments(helios_survey_template_filepath)
 
-    def populate_template(self, using_helios_flight_planner=False):
+    def populate_template(self):
         self.tree = Survey.read_template()
         root = self.tree.getroot()
 
@@ -307,14 +284,11 @@ class Survey:
         # Insert legs into survey element from flight path XML
         survey_element = root.find("survey")
 
-        if using_helios_flight_planner:
-            flight_path_root_element = FlightPath.parse_from_file(self.flight_path)
-        else:
-            if isinstance(self.flight_path, str):
-                flight_path_tree = parse_xml_with_comments(self.flight_path)
-            else:  # is FlightPath object
-                flight_path_tree = self.flight_path.tree
-            flight_path_root_element = flight_path_tree.getroot()
+        if isinstance(self.flight_path, str):
+            flight_path_tree = parse_xml_with_comments(self.flight_path)
+        else:  # is FlightPath object
+            flight_path_tree = self.flight_path.tree
+        flight_path_root_element = flight_path_tree.getroot()
 
         for child in flight_path_root_element:
             survey_element.append(child)
