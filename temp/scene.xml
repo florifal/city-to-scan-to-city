@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+    <scene id="Delft" name="Delft">
+        
+        <part>
+            <filter type="geotiffloader">
+                <param type="string" key="filepath" value="C:\Users\Florian\Apps\helios-plusplus-win\data\sceneparts\Delft\M5_37EN1_5_m_filled.TIF" />
+                <param type="string" key="matfile" value="C:\Users\Florian\Apps\helios-plusplus-win\data\sceneparts\Delft\M5_37EN1_5_m_filled.TIF.mtl" />
+                <param type="string" key="matname" value="ground" />
+            </filter>
+            
+        </part>
+
+        <part>
+            <filter type="objloader">
+                <param type="string" key="filepath" value="C:\Users\Florian\Apps\helios-plusplus-win\data\sceneparts\Delft\9-276-556-LoD22-3D.obj" />
+                <param type="string" key="up" value="z" />
+            </filter>
+            
+            
+        </part>
+    </scene>
+</document>

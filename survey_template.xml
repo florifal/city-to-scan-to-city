@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+	<scannerSettings id="scanner_settings" active="true" pulseFreq_hz="" scanAngle_deg="" scanFreq_hz="" />
+    <survey name="" scene="" platform="" scanner="">
+        <detectorSettings accuracy_m=""/>
+    </survey>
+</document>

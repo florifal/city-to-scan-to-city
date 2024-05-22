@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<document>
+	<scannerSettings id="scanner_settings" active="true" pulseFreq_hz="None" scanAngle_deg="None" scanFreq_hz="None" />
+    <survey name="Delft" scene="temp\scene.xml#Delft" platform="C:\Users\Florian\Apps\helios-plusplus-win\data\platforms.xml#sr22" scanner="C:\Users\Florian\Apps\helios-plusplus-win\data\scanners_als.xml#riegl_vq_780i">
+        <detectorSettings accuracy_m="None" />
+    <!-- leg000 -->
+        <leg>
+            <platformSettings x="83663.0" y="445821.0" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg001 -->
+        <leg>
+            <platformSettings x="82535.0" y="445821.0" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg002 -->
+        <leg>
+            <platformSettings x="82535.0" y="446046.2" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg003 -->
+        <leg>
+            <platformSettings x="83663.0" y="446046.2" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg004 -->
+        <leg>
+            <platformSettings x="83663.0" y="446271.4" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg005 -->
+        <leg>
+            <platformSettings x="82535.0" y="446271.4" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg006 -->
+        <leg>
+            <platformSettings x="82535.0" y="446496.60000000003" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg007 -->
+        <leg>
+            <platformSettings x="83663.0" y="446496.60000000003" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg008 -->
+        <leg>
+            <platformSettings x="83663.0" y="446721.80000000005" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg009 -->
+        <leg>
+            <platformSettings x="82535.0" y="446721.80000000005" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg010 -->
+        <leg>
+            <platformSettings x="82535.0" y="446947.00000000006" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        
+        <!-- leg011 -->
+        <leg>
+            <platformSettings x="83663.0" y="446947.00000000006" z="500" movePerSec_m="60" />
+            <scannerSettings template="scanner_settings" active="false" trajectoryTimeInterval_s="0.05" />
+        </leg>
+        </survey>
+</document>
