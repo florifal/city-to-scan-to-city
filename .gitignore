@@ -1,3 +1,10 @@
+# drawIO backup files
+*.bkp
+
+# -----------------------------------------------
+# Default .gitignore for Python files from GitHub
+# -----------------------------------------------
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
