@@ -224,6 +224,38 @@ class FlightPath:
 
 
 class Survey:
+
+    def __init__(self, name: str, filepath: str):
+        self.name = name
+        self.filepath = filepath
+
+        self.config = None
+        self.generator = None
+        self.executor = None
+
+    def create_config:
+        pass
+
+
+class SurveyConfig:
+
+    def __init__(
+            self,
+            scene: str | Scene = "",
+            platform: str = "",
+            scanner: str = "",
+            flight_path: str | FlightPath = "",
+            scanner_settings_id: str = "scsanner_settings",
+            pulse_freq: float = .0,
+            scan_freq: float = .0,
+            scan_angle: int = 0,
+            velocity: int = 0,
+            accuracy: float = .0
+    ):
+        pass
+
+
+class SurveyGenerator:
     """Create a HELIOS++ survey XML file based on a template file by populating it with parameter values,
     scene information, and flight path, i.e., legs."""
 
@@ -259,7 +291,7 @@ class Survey:
         return parse_xml_with_comments(helios_survey_template_filepath)
 
     def populate_template(self):
-        self.tree = Survey.read_template()
+        self.tree = SurveyGenerator.read_template()
         root = self.tree.getroot()
 
         # Apply attribute values to scannerSettings element
@@ -301,6 +333,12 @@ class Survey:
             raise TypeError("Populate XML element tree first, e.g. using populate_template().")
         else:
             self.tree.write(self.filepath, encoding="UTF-8", xml_declaration=True)
+
+
+class SurveyExecutor:
+
+    def __init__(self):
+        pass
 
 
 class Scenario:
