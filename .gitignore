@@ -1,6 +1,9 @@
 # drawIO backup files
 *.bkp
 
+# Geoflow GUI config
+imgui.ini
+
 # -----------------------------------------------
 # Default .gitignore for Python files from GitHub
 # -----------------------------------------------
