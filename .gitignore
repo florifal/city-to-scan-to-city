@@ -4,6 +4,9 @@
 # Geoflow GUI config
 imgui.ini
 
+# FME backup files
+*.fmw.recover
+
 # -----------------------------------------------
 # Default .gitignore for Python files from GitHub
 # -----------------------------------------------
