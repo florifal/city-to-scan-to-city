@@ -6,24 +6,38 @@ from pyhelios.util import scene_writer, flight_planner
 
 
 def parse_xml_with_comments(xml_filepath: str) -> eT.ElementTree:
-    """Parse an XML file using ElementTree including the comments and return an ElementTree object."""
+    """Parse an XML file using ElementTree, including the comments, and return an ElementTree object."""
     parser = eT.XMLParser(target=eT.TreeBuilder(insert_comments=True))  # Retain XML comments (req. Python 3.8)
     return eT.parse(xml_filepath, parser)
 
 
 class XMLGenerator:
-    parser = eT.XMLParser(target=eT.TreeBuilder(insert_comments=True))  # Retain XML comments (req. Python 3.8)
 
     def __init__(self, filepath: str, xml_declaration: bool = True):
+        """Superclass for classes generating HElIOS++ XML configuration files
+
+        :param filepath: Destination file path for the output XML file.
+        :param xml_declaration: Option to add XML declaration tag at the top of the file.
+        """
         self.filepath: str = filepath
         self.xml_declaration: bool = xml_declaration
 
         self.tree: eT.ElementTree | None = None
         self.xml_string: str = ""
 
+    @classmethod
+    def parser(cls) -> eT.XMLParser:
+        """Return an ElementTree parser that includes comments in the tree structure
+
+        A new parser must be generated for each ElementTree. For this reason, this is implemented as a class method
+        instead of a class attribute. See https://stackoverflow.com/a/28127427
+        """
+        return eT.XMLParser(target=eT.TreeBuilder(insert_comments=True))  # Retain XML comments (req. Python 3.8)
+
     def create_element_tree(self):
+        """Create an ElementTree, either from an already existing XML string or an empty tree"""
         if self.xml_string != "":
-            root_element = eT.fromstring(self.xml_string, XMLGenerator.parser)
+            root_element = eT.fromstring(self.xml_string, XMLGenerator.parser())
             self.tree = eT.ElementTree(root_element)
         else:
             self.tree = eT.ElementTree()
@@ -33,11 +47,18 @@ class XMLGenerator:
 
     def create_xml_string(self):
         """Create a string representation of XML element tree if necessary."""
-        if self.tree is None:
-            self.create_element_tree()
+        # The following either creates an empty ElementTree, which it does not make sense to turn into a string, or it
+        # creates a string from an ElementTree, only to then turn it back to a string using this method, which does not
+        # make much sense either. The idea may have been to obtain an XML string with nice formatting from one with
+        # ugly formatting. For now, I decided against using it.
+        # if self.tree is None:
+        #     self.create_element_tree()
+        if not isinstance(self.tree, eT.ElementTree):
+            raise ValueError("Cannot create XML string: ElementTree undefined.")
         self.xml_string = eT.tostring(self.tree.getroot(), encoding="unicode", xml_declaration=self.xml_declaration)
 
     def write_file(self):
+        """Write the ElementTree to an XML file."""
         if self.filepath is None or self.filepath == "":
             raise ValueError("Argument filepath must be defined before writing XML file.")
         if self.tree is None:
@@ -246,7 +267,7 @@ class SurveyGenerator(XMLGenerator):
         survey["platform"] = str(self.platform_filepath)
         survey["scanner"] = str(self.scanner_filepath)
 
-        # Apply attribute values to detectorSettings elemenet
+        # Apply attribute values to detectorSettings element
         detector_settings = root.find("survey/detectorSettings").attrib
         detector_settings["accuracy_m"] = str(self.detector_accuracy)
 
