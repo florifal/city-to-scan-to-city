@@ -3,9 +3,9 @@ from pathlib import Path
 from shutil import copy2
 
 
-def split_obj_file(obj_filepath: Path | str, output_dirpath: Path | str):
+def split_obj_file(obj_filepath: Path | str, output_dirpath: Path | str, overwrite: bool = False):
     file = OBJFile(obj_filepath)
-    file.write_individual_objects(output_dirpath)
+    file.write_individual_objects(output_dirpath, overwrite)
 
 
 class OBJFile:
