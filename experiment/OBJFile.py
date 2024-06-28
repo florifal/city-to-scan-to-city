@@ -111,13 +111,15 @@ class OBJFile:
     #     with open(filepath, "w") as file:
     #         file.writelines(lines)
 
-    def write_individual_objects(self, dirpath: Path | str):
+    def write_individual_objects(self, dirpath: Path | str, overwrite: bool = False):
         dirpath = Path(dirpath)
         dirpath.mkdir(exist_ok=True)
 
         for o in self.objects:
-            o.write(dirpath / f"{o.name}.obj", vertices=self.vertices, mtllib=self.mtllib)
-            # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
+            output_filepath = dirpath / f"{o.name}.obj"
+            if overwrite or not output_filepath.is_file():
+                o.write(output_filepath, vertices=self.vertices, mtllib=self.mtllib)
+                # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
 
         if self.mtllib is not None and self.mtllib != "":
             copy2(self.filepath.parent / self.mtllib, dirpath / self.mtllib)
