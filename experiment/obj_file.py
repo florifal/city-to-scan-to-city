@@ -62,12 +62,12 @@ class OBJFile:
             elif line.startswith("mtllib "):
                 self.mtllib = line.split(" ", 1)[1]
 
-            # Pass over comments
-            elif line.startswith("#"):
-                pass
-
-            else:
-                raise Exception(f"OBJ parser encountered unparsable line (no. {i+1}):\n{line}\nIn file:\n{filepath}")
+            # # Pass over comments
+            # elif line.startswith("#"):
+            #     pass
+            #
+            # else:
+            #     raise Exception(f"OBJ parser encountered unparsable line (no. {i+1}):\n{line}\nIn file:\n{filepath}")
 
         self.add_object(current_object)
 
@@ -122,7 +122,8 @@ class OBJFile:
                 # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
 
         if self.mtllib is not None and self.mtllib != "":
-            copy2(self.filepath.parent / self.mtllib, dirpath / self.mtllib)
+            if overwrite or not (dirpath / self.mtllib).is_file():
+                copy2(self.filepath.parent / self.mtllib, dirpath / self.mtllib)
 
 
 class OBJFace:
@@ -194,5 +195,5 @@ class OBJObject:
             vertex_id_string = " ".join(new_vertex_ids)
             lines.append(f"f {vertex_id_string}\n")
 
-        with open(filepath, "w") as file:
+        with open(filepath, "w", encoding="utf-8") as file:
             file.writelines(lines)
