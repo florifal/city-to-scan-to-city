@@ -13,6 +13,14 @@ def execute_subprocess(cmd):
 
 
 def crs_url_from_epsg(epsg_str: str) -> str:
+    # Get the EPSG code without "epsg:" prefix
     crs_epsg_code = epsg_str.rsplit(":", 1)[1]
     return "https://www.opengis.net/def/crs/EPSG/0/" + crs_epsg_code
 
+
+def get_wkt_from_gpkg():
+    pass
+
+
+def get_wkt_from_cityjson():
+    pass
