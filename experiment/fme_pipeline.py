@@ -22,7 +22,7 @@ def run_fme_workspace(
         command.append(f"{param_value}")
 
     if verbose:
-        print("Executing FME workspace with command:")
+        print("Executing FME workspace with command:\n")
         print("\n".join(command))
         print()
 
