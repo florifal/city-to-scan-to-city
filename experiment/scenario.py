@@ -738,6 +738,7 @@ class Scenario:
         self.config = config
         self.scene_config = config["scene_config"]
         self.survey_config = config["survey_config"]
+        self.cloud_processing_config = config["cloud_processing_config"]
         self.reconstruction_config = config["reconstruction_config"]
         self.evaluation_config = config["evaluation_config"]
 
@@ -788,7 +789,10 @@ class Scenario:
         self.survey.run()
         self.survey.setup_merger()
         self.survey.merge_clouds()
-        self.survey.add_noise()
+        # self.survey.add_noise()  # todo: remove
+
+    def postprocess_point_cloud(self):
+        pass
 
     def setup_reconstruction(self):
         self.reconstruction = Reconstruction(
@@ -1282,11 +1286,6 @@ def scenario_default_config():
         "output_filepath": ""  # UNUSED
     }
 
-    cloud_error_config = {
-        "std_horizontal_error": 0.0,
-        "std_vertical_error": 0.0
-    }
-
     survey_config = {
         "survey_xml_filepath": "",
         "survey_output_dirpath": "",
@@ -1294,7 +1293,11 @@ def scenario_default_config():
         "flight_path_config": flight_path_config,
         "survey_executor_config": survey_executor_config,
         "cloud_merge_config": cloud_merge_config,
-        "cloud_error_config": cloud_error_config
+    }
+
+    cloud_processing_config = {
+        "std_horizontal_error": 0.0,
+        "std_vertical_error": 0.0
     }
 
     reconstruction_config = {
@@ -1320,6 +1323,7 @@ def scenario_default_config():
         "crs": "epsg:7415",
         "scene_config": scene_config,
         "survey_config": survey_config,
+        "cloud_processing_config": cloud_processing_config,
         "reconstruction_config": reconstruction_config,
         "evaluation_config": evaluation_config
     }
