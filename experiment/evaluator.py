@@ -105,6 +105,18 @@ class Evaluator:
     def save_results(self):
         self.results_df.to_csv(self.output_csv_filepath)
 
+    def load_results(self):
+        self.results_df = pd.read_csv(self.output_csv_filepath, index_col=0)
+
+    @property
+    def results(self):  # todo: call this "results_df" and change results_df to _results_df, including in subclasses
+        if self.results_df is None:
+            self.load_results()
+        return self.results_df
+
+    def run(self):
+        pass
+
 
 class DatasetEvaluator(Evaluator):
 
@@ -174,6 +186,7 @@ class PointMeshDistanceBuildingsEvaluator(BuildingsEvaluator):
 
 
 class HausdorffLODSEvaluator(BuildingsEvaluator):
+    """Compute Hausdorff distances between all objects present in multiple pairs of Wavefront OBJ files"""
     name = "hausdorff"
 
     def __init__(
@@ -181,6 +194,11 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
             output_base_dirpath: Path | str,
             input_obj_filepath_pairs: dict[str, tuple[Path | str, Path | str]]
     ):
+        """
+
+        :param output_base_dirpath: Directory for evaluation results
+        :param input_obj_filepath_pairs: Dictionary. Key: Name of LOD. Value: Tuple of two paths to two OBJ files.
+        """
         super().__init__(output_base_dirpath)
         self.input_obj_filepath_pairs = input_obj_filepath_pairs
 
@@ -202,6 +220,7 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
             hausdorff_evaluator.split_obj_files()
             hausdorff_evaluator.compute_hausdorff_distances()
             print()
+
         print("Joining results ...")
         self.results_df = pd.concat(
             [evaluator.results_df.add_suffix(f".{lod}") for lod, evaluator in self.hausdorff_evaluators.items()],
@@ -216,7 +235,8 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
 
 
 class HausdorffEvaluator(BuildingsEvaluator):
-    name = "hausdorff"
+    """Compute Hausdorff distances between all objects present in two Wavefront OBJ files"""
+    name = "hausdorff_single_lod"
 
     def __init__(
             self,
@@ -277,7 +297,7 @@ class HausdorffEvaluator(BuildingsEvaluator):
                 self.split_input_obj_dirpath_1 / filename,
                 self.split_input_obj_dirpath_2 / filename
             )
-            results_dict = {"file": filename,  "hausdorff": max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])}
+            results_dict = {"file": Path(filename).stem,  "hausdorff": max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])}
             results_dict.update({f"{key}.io": value for key, value in hausdorff_io_dict.items()})
             results_dict.update({f"{key}.oi": value for key, value in hausdorff_oi_dict.items()})
             results.append(results_dict)
@@ -312,7 +332,7 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         self.crs = crs
         self.save_filtered_point_clouds = save_filtered_point_clouds
 
-        self.results_df = pd.DataFrame(columns=["points", "area", "density"])
+        # self.results_df = pd.DataFrame(columns=["points", "area", "density"])  # todo: remove
 
     def compute_overall_ground_density(self):
         print("Computing overall ground density ...")
@@ -331,7 +351,7 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         area = bbox_poly.area
         density = n_points / area
 
-        self.results_df.loc["overall", :] = [n_points, area, density]
+        self.results_df.loc["overall", ["points", "area", "density"]] = [n_points, area, density]
 
     def compute_buildings_ground_density(self):
         print("Computing ground density within building footprints ...")
@@ -349,7 +369,7 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         footprints_area = self.building_footprints.area.sum()
         density = n_points / footprints_area
 
-        self.results_df.loc["buildings", :] = [n_points, footprints_area, density]
+        self.results_df.loc["buildings", ["points", "area", "density"]] = [n_points, footprints_area, density]
 
     def compute_radial_density(self):
         print("Computing local (radial) volume and surface densities ...")
@@ -402,12 +422,113 @@ class PointDensityBuildingsEvaluator(BuildingsEvaluator):
     pass
 
 
+class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
+    name = "area_volume_diff"
+
+    def __init__(
+            self,
+            output_base_dirpath_1: Path | str,
+            output_base_dirpath_2: Path | str,
+            input_cityjson_filepath_1: Path | str,
+            input_cityjson_filepath_2: Path | str,
+            index_col_name: str,
+            lods: list[str],
+            crs: str,
+            reevaluate_if_exists_1: bool = False,
+            reevaluate_if_exists_2: bool = False
+    ):
+        super().__init__(output_base_dirpath=output_base_dirpath_2)
+        self.output_base_dirpath_1 = Path(output_base_dirpath_1)
+        self.output_base_dirpath_2 = Path(output_base_dirpath_2)
+        self.input_cityjson_filepath_1 = Path(input_cityjson_filepath_1)
+        self.input_cityjson_filepath_2 = Path(input_cityjson_filepath_2)
+        self.index_col_name = index_col_name
+        self.lods = lods
+        self.crs = crs
+        self.reevaluate_if_exists_1 = reevaluate_if_exists_1
+        self.reevaluate_if_exists_2 = reevaluate_if_exists_2
+
+        self.area_volume_evaluator_1: AreaVolumeEvaluator | None = None
+        self.area_volume_evaluator_2: AreaVolumeEvaluator | None = None
+
+    def setup_area_volume_evaluators(self):
+        print("Setting up both AreaVolumeEvaluators ...")
+        self.area_volume_evaluator_1 = AreaVolumeEvaluator(
+            self.output_base_dirpath_1,
+            input_cityjson_filepath=self.input_cityjson_filepath_1,
+            index_col_name=self.index_col_name,
+            lods=self.lods,
+            crs=self.crs
+        )
+
+        self.area_volume_evaluator_2 = AreaVolumeEvaluator(
+            self.output_base_dirpath_2,
+            input_cityjson_filepath=self.input_cityjson_filepath_2,
+            index_col_name=self.index_col_name,
+            lods=self.lods,
+            crs=self.crs
+        )
+
+    def run_area_volume_evaluators(self):
+        if not self.area_volume_evaluator_1.output_csv_filepath.exists() or self.reevaluate_if_exists_1:
+            print(f"Running AreaVolumeEvaluator for {self.input_cityjson_filepath_1.name} ...")
+            self.area_volume_evaluator_1.run()
+        else:
+            print(f"Output of AreaVolumeEvaluator for {self.input_cityjson_filepath_1.name} already exists.")
+
+        if not self.area_volume_evaluator_2.output_csv_filepath.exists() or self.reevaluate_if_exists_2:
+            print(f"Running AreaVolumeEvaluator for {self.input_cityjson_filepath_2.name} ...")
+            self.area_volume_evaluator_2.run()
+        else:
+            print(f"Output of AreaVolumeEvaluator for {self.input_cityjson_filepath_2.name} already exists.")
+
+        print("Merging results of both AreaVolumeEvaluators ...")
+        # The results dataframe of the AreaVolumeDifferenceEvaluator contains the results of both AreaVolumeEvaluators
+        self.results_df = pd.merge(
+            self.area_volume_evaluator_1.results,  # .results_df may not exist, therefore call property .results
+            self.area_volume_evaluator_2.results,
+            left_on=glb.target_identifier_name,
+            right_on=glb.target_identifier_name,
+            suffixes=("_in", "_out")
+        )
+
+        print("Computing differences in area and volume across all LODs ...")
+        for lod in self.lods:
+            lod_short = lod.replace(".", "")
+            for field in [glb.fme_area_field_name, glb.fme_volume_field_name]:
+                metric_out = self.results_df[f"{field}_{lod_short}_out"]
+                metric_in = self.results_df[f"{field}_{lod_short}_in"]
+
+                self.results_df[f"{field}_{lod_short}_diff"] = metric_out - metric_in
+
+            # todo: remove
+            # area_out = self.results_df[f"{glb.fme_area_field_name}_{lod_short}_out"]
+            # area_in = self.results_df[f"{glb.fme_area_field_name}_{lod_short}_in"]
+            # volume_out = self.results_df[f"{glb.fme_volume_field_name}_{lod_short}_out"]
+            # volume_in = self.results_df[f"{glb.fme_volume_field_name}_{lod_short}_in"]
+
+    @print_starting_message
+    def run(self):
+        self.setup_area_volume_evaluators()
+        self.run_area_volume_evaluators()
+        self.save_results()
+
+
 class FMEEvaluator(BuildingsEvaluator):
     name = "fme_evaluator"
-    index_col_name = glb.geoflow_output_cityjson_identifier_name
 
-    def __init__(self, output_base_dirpath: Path | str, lods: list[str], crs: str):
+    def __init__(self, output_base_dirpath: Path | str, index_col_name: str, lods: list[str], crs: str):
+        """
+
+        :param output_base_dirpath: Directory for evaluation results
+        :param index_col_name: Name of the attribute in the Geoflow output CityJSON to be used as the index for the
+        results table. Ideally, a building identifier
+        :param lods: List of levels of detail (LODs) to process. They are used as user parameters for the FME pipeline,
+        so they should be formatted as in "2.2".
+        :param crs: Coordinate reference system EPSG string.
+        """
         super().__init__(output_base_dirpath)
+        self.index_col_name = index_col_name
         self.lods = lods
         self.crs = crs
 
@@ -437,6 +558,7 @@ class FMEEvaluator(BuildingsEvaluator):
         input_cityjson_buildings = input_cityjson.get_cityobjects(type="building")
 
         for lod, output_cityjson_filepath in self.fme_output_cityjson_filepaths.items():
+            lod_short = lod.replace(".", "")
             # Load the FME output CityJSON for this LOD
             fme_output_model = cityjson.load(output_cityjson_filepath)
             fme_output_buildings = fme_output_model.get_cityobjects(type="building")
@@ -445,7 +567,7 @@ class FMEEvaluator(BuildingsEvaluator):
                     # Append all FME output attributes of this LOD to the current building in the input CityJSON (which
                     # is the reconstructed model), adding the LOD as a suffix
                     for attribute_name in self.fme_output_attributes:
-                        new_attribute_name = f"{attribute_name}_{lod.replace('.', '')}"
+                        new_attribute_name = f"{attribute_name}_{lod_short}"
                         input_cityjson_buildings[b.id].attributes[new_attribute_name] = b.attributes[attribute_name]
 
         # Save the CityJSON including the new attributes to a new file
@@ -458,10 +580,13 @@ class FMEEvaluator(BuildingsEvaluator):
         # contained in it
         for key in input_cityjson_buildings.keys():
             input_cityjson_buildings[key] = input_cityjson_buildings[key].attributes
-        # Create a dataframe where the dict keys form the index, and set the column specified in self.index_col_name
-        # (typically `identificatie`) as index instead of the cryptical FID-derived values (e.g., "1", "1-0", ...)
+        # Create a dataframe where the dict keys form the index
         self.results_df = pd.DataFrame.from_dict(input_cityjson_buildings, orient="index")
         if self.index_col_name != "":
+            # 1. Set the column specified in self.index_col_name (e.g., `OGRLoader.identificatie`) as index instead of
+            #    the cryptical FID-derived values (e.g., "1", "1-0", ...)
+            # 2. Rename the index column to the target identifier name (e.g., `identificatie`, to strip off the
+            #    `OGRLoader` prefix resulting from Geoflow output
             self.results_df = self.results_df.set_index(self.index_col_name)
             self.results_df.index.name = glb.target_identifier_name
 
@@ -474,16 +599,16 @@ class FMEEvaluator(BuildingsEvaluator):
 
 class AreaVolumeEvaluator(FMEEvaluator):
     name = "area_volume"
-    index_col_name = glb.geoflow_output_cityjson_identifier_name
 
     def __init__(
             self,
             output_base_dirpath: Path | str,
             input_cityjson_filepath: Path | str,
+            index_col_name: str,
             lods: list[str],
             crs: str
     ):
-        super().__init__(output_base_dirpath, lods=lods, crs=crs)
+        super().__init__(output_base_dirpath, index_col_name, lods=lods, crs=crs)
         self.input_cityjson_filepath = Path(input_cityjson_filepath)
         self.results_template_cityjson_filepath = self.input_cityjson_filepath
         self.fme_output_attributes = [glb.fme_area_field_name, glb.fme_volume_field_name]
@@ -499,17 +624,17 @@ class AreaVolumeEvaluator(FMEEvaluator):
 
 class IOU3DEvaluator(FMEEvaluator):
     name = "iou_3d"
-    index_col_name = glb.geoflow_output_cityjson_identifier_name
 
     def __init__(
             self,
             output_base_dirpath: Path | str,
             input_cityjson_filepath_1: Path | str,
             input_cityjson_filepath_2: Path | str,
+            index_col_name: str,
             lods: list[str],
             crs: str
     ):
-        super().__init__(output_base_dirpath, lods=lods, crs=crs)
+        super().__init__(output_base_dirpath, index_col_name, lods=lods, crs=crs)
         self.input_cityjson_filepath_1 = Path(input_cityjson_filepath_1)
         self.input_cityjson_filepath_2 = Path(input_cityjson_filepath_2)
         self.results_template_cityjson_filepath = self.input_cityjson_filepath_2
