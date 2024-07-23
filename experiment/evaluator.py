@@ -12,6 +12,7 @@ from shapely import box
 import experiment.global_vars as glb
 from experiment.fme_pipeline import FMEPipeline, FMEPipelineAreaVolume, FMEPipelineIOU3D
 from experiment.obj_file import split_obj_file
+from experiment.utils import rms
 
 
 def print_starting_message(func):
@@ -57,7 +58,7 @@ def get_bidirectional_hausdorff_distances(
     return hausdorff_12_dict, hausdorff_21_dict
 
 
-def read_building_points(point_cloud_filepath, crs, classification=6, verbose=True):
+def read_building_points(point_cloud_filepath: Path | str, crs: str, classification: int = 6, verbose: bool = True):
     reader = pdal.Reader(str(point_cloud_filepath), nosrs=True, default_srs=crs)
     pipeline = reader.pipeline()
     n_points = pipeline.execute()
@@ -101,6 +102,10 @@ class Evaluator:
 
         self.output_csv_filepath: Path = self.output_dirpath / f"evaluation_{self.name}.csv"
         self.results_df: pd.DataFrame | None = None
+        self._summary_stats = {}
+
+    def run(self):
+        pass
 
     def save_results(self):
         self.results_df.to_csv(self.output_csv_filepath)
@@ -108,14 +113,20 @@ class Evaluator:
     def load_results(self):
         self.results_df = pd.read_csv(self.output_csv_filepath, index_col=0)
 
+    def compute_summary_stats(self):
+        pass
+
     @property
     def results(self):  # todo: call this "results_df" and change results_df to _results_df, including in subclasses
-        if self.results_df is None:
+        if self.results_df is None or self.results_df.empty:
             self.load_results()
         return self.results_df
 
-    def run(self):
-        pass
+    @property
+    def summary_stats(self) -> dict:
+        if self._summary_stats == {}:
+            self.compute_summary_stats()
+        return self._summary_stats
 
 
 class DatasetEvaluator(Evaluator):
@@ -150,7 +161,9 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
         self.distances_hist_df: pd.DataFrame | None = None
 
     def compute_building_point_mesh_distance(self):
+        print("Reading point clouds and filtering for points on buildings ...\n")
         point_array = read_building_points(self.point_cloud_filepath, self.crs)
+        print("Computing point-mesh distance ...")
         distances = compute_point_mesh_distance(point_array, self.mesh_filepath)
 
         self.results_df = pd.DataFrame({
@@ -175,6 +188,15 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
         self.points_and_distances_df.to_csv(self.output_dirpath / f"evaluation_{self.name}_all_points.csv")
         self.distances_hist_df.to_csv(self.output_dirpath / f"evaluation_{self.name}_histogram.csv")
         self.save_results()
+
+    def compute_summary_stats(self):
+        self._summary_stats = {
+            "point_mesh_distance_rms": self.results.loc["buildings", "RMS"],
+            "point_mesh_distance_mean": self.results.loc["buildings", "mean"],
+            "point_mesh_distance_median": self.results.loc["buildings", "median"],
+            "point_mesh_distance_min": self.results.loc["buildings", "min"],
+            "point_mesh_distance_max": self.results.loc["buildings", "max"]
+        }
 
 
 class HorizontalAndVerticalPointMeshDistanceEvaluator(DatasetEvaluator):
@@ -203,6 +225,7 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
         self.input_obj_filepath_pairs = input_obj_filepath_pairs
 
         self.hausdorff_evaluators: dict[str, HausdorffEvaluator] = {}
+        self.lods = list(self.hausdorff_evaluators.keys())
 
     def setup_hausdorff_evaluators(self):
         print("Setting up a HausdorffEvaluator for each LOD ...\n")
@@ -233,10 +256,23 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
         self.run_hausdorff_evaluators()
         self.save_results()
 
+    def compute_summary_stats(self):
+        self._summary_stats = {}
+        for lod in self.lods:
+            hausdorff_col = self.results[f"hausdorff.{lod}"]
+            key_prefix = f"hausdorff_{lod}_"
+            self._summary_stats.update({
+                key_prefix + "rms": rms(hausdorff_col),
+                key_prefix + "mean": hausdorff_col.mean(),
+                key_prefix + "median": hausdorff_col.median(),
+                key_prefix + "min": hausdorff_col.min(),
+                key_prefix + "max": hausdorff_col.max()
+            })
+
 
 class HausdorffEvaluator(BuildingsEvaluator):
     """Compute Hausdorff distances between all objects present in two Wavefront OBJ files"""
-    name = "hausdorff_single_lod"
+    name = "hausdorff"
 
     def __init__(
             self,
@@ -323,7 +359,8 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
             bbox: list[float],
             building_footprints: gpd.GeoSeries,
             crs: str,
-            save_filtered_point_clouds: bool = False
+            save_filtered_point_clouds: bool = False,
+            radial_density_computation: bool = True
     ):
         super().__init__(output_base_dirpath)
         self.point_cloud_filepath = Path(point_cloud_filepath)
@@ -331,8 +368,9 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         self.building_footprints = building_footprints
         self.crs = crs
         self.save_filtered_point_clouds = save_filtered_point_clouds
+        self.radial_density_computation = radial_density_computation
 
-        # self.results_df = pd.DataFrame(columns=["points", "area", "density"])  # todo: remove
+        self.results_df: pd.DataFrame = pd.DataFrame()
 
     def compute_overall_ground_density(self):
         print("Computing overall ground density ...")
@@ -414,8 +452,15 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
     def run(self):
         self.compute_overall_ground_density()
         self.compute_buildings_ground_density()
-        self.compute_radial_density()
+        if self.radial_density_computation:
+            self.compute_radial_density()
         self.save_results()
+
+    def compute_summary_stats(self):
+        self._summary_stats = {
+            "density_overall": self.results.loc["overall", "density"],
+            "density_buildings": self.results.loc["buildings", "density"]
+        }
 
 
 class PointDensityBuildingsEvaluator(BuildingsEvaluator):
@@ -501,17 +546,34 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
 
                 self.results_df[f"{field}_{lod_short}_diff"] = metric_out - metric_in
 
-            # todo: remove
-            # area_out = self.results_df[f"{glb.fme_area_field_name}_{lod_short}_out"]
-            # area_in = self.results_df[f"{glb.fme_area_field_name}_{lod_short}_in"]
-            # volume_out = self.results_df[f"{glb.fme_volume_field_name}_{lod_short}_out"]
-            # volume_in = self.results_df[f"{glb.fme_volume_field_name}_{lod_short}_in"]
-
     @print_starting_message
     def run(self):
         self.setup_area_volume_evaluators()
         self.run_area_volume_evaluators()
         self.save_results()
+
+    def compute_summary_stats(self):
+        self._summary_stats = {}
+        for lod in self.lods:
+            lod = lod.replace(".", "")
+            area_prefix = f"area_{lod}_"
+            vol_prefix = f"volume_{lod}_"
+            area_diff_col = self.results[f"fme_area_{lod}_diff"]
+            vol_diff_col = self.results[f"fme_volume_{lod}_diff"]
+            self._summary_stats.update({
+                area_prefix + "mean": self.results[f"fme_area_{lod}_out"].mean(),
+                vol_prefix + "mean": self.results[f"fme_volume_{lod}_out"].mean(),
+                area_prefix + "mean_diff": area_diff_col.mean(),
+                area_prefix + "median_diff": area_diff_col.median(),
+                area_prefix + "mean_abs_diff": area_diff_col.abs().mean(),
+                area_prefix + "median_abs_diff": area_diff_col.abs().median(),
+                area_prefix + "rms_diff": rms(area_diff_col),
+                vol_prefix + "mean_diff": vol_diff_col.mean(),
+                vol_prefix + "median_diff": vol_diff_col.median(),
+                vol_prefix + "mean_abs_diff": vol_diff_col.abs().mean(),
+                vol_prefix + "median_abs_diff": vol_diff_col.abs().median(),
+                vol_prefix + "rms_diff": rms(vol_diff_col),
+            })
 
 
 class FMEEvaluator(BuildingsEvaluator):
@@ -654,3 +716,16 @@ class IOU3DEvaluator(FMEEvaluator):
                 lod=lod
             )
 
+    def compute_summary_stats(self):
+        self._summary_stats = {}
+        for lod in self.lods:
+            lod = lod.replace(".", "")
+            key_prefix = f"iou_{lod}_"
+            iou_col = self.results[f"IOU_{lod}"]
+            self._summary_stats.update({
+                key_prefix + "rms": rms(iou_col),
+                key_prefix + "mean": iou_col.mean(),
+                key_prefix + "median": iou_col.median(),
+                key_prefix + "min": iou_col.min(),
+                key_prefix + "max": iou_col.max()
+            })

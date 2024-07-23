@@ -1,5 +1,6 @@
 import subprocess
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 
@@ -57,3 +58,7 @@ def point_spacing_along(velocity, scan_freq_hz):
 def point_spacing_across(altitude, scan_angle_deg, pulse_freq_hz, scan_freq_hz):
     # vertical_point_spacing = (2 * altitude * np.tan(scan_angle_deg / 2) * scan_freq_hz) / pulse_freq_hz
     return 2 * altitude * np.tan(scan_angle_deg * np.pi / 180) * scan_freq_hz / pulse_freq_hz
+
+
+def rms(x: list | np.ndarray | pd.Series):
+    return np.sqrt(np.mean(np.square(x)))

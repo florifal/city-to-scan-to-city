@@ -4,17 +4,18 @@ import json
 import time
 import datetime
 import shutil
+
+import pandas as pd
+
 import pyhelios
-import pdal
 import copy
-import collections.abc
-import numpy as np
 from datetime import timedelta
 from xml.etree import ElementTree as eT
 from scipy.spatial import KDTree
 
+from experiment.config import deep_update, update_config_item, get_config_item
 from experiment.scene_part import ScenePartOBJ, ScenePartTIFF
-from experiment.utils import execute_subprocess, crs_url_from_epsg
+from experiment.utils import execute_subprocess, crs_url_from_epsg, get_last_line_from_file, point_spacing_along, point_spacing_across
 from experiment.xml_generator import SceneGenerator, FlightPathGenerator, SurveyGenerator, parse_xml_with_comments
 from experiment.evaluator import *
 
@@ -103,7 +104,6 @@ class Survey:
         self.flight_path_config = config["flight_path_config"]
         self.survey_executor_config = config["survey_executor_config"]
         self.cloud_merge_config = config["cloud_merge_config"]
-        self.cloud_error_config = config["cloud_error_config"]
 
         # If the Survey is created by a Scenario, the scene file path may be passed to this Survey as argument. If the
         # Survey is created independently of a Scenario, the scene file path should be in the survey generator config.
@@ -240,25 +240,6 @@ class Survey:
         # Write the path to the merged point cloud file to a text file
         with open(self.textfile_merged_cloud_path_filepath, "w", encoding="utf-8") as f:
             f.write(str(self.output_cloud_filepath) + "\n")
-
-    def add_noise(self):
-        # Only run CloudNoiseAdder if a non-zero horizontal or vertical error is provided in the settings
-        if self.cloud_error_config["std_horizontal_error"] != 0 or self.cloud_error_config["std_vertical_error"] != 0:
-            output_cloud_filename = self.output_cloud_filepath.stem + "_noise" + self.output_cloud_filepath.suffix
-            self.output_cloud_filepath = self.output_cloud_filepath.parent / output_cloud_filename
-
-            self.noise_adder = CloudNoiseAdder(
-                input_filepath=self.cloud_merger.merged_output_cloud_filepath,
-                output_filepath=self.output_cloud_filepath,
-                std_horizontal=self.cloud_error_config["std_horizontal_error"],
-                std_vertical=self.cloud_error_config["std_vertical_error"],
-                crs=self.crs
-            )
-
-            self.noise_adder.run()
-
-            with open(self.textfile_merged_cloud_path_filepath, "a", encoding="utf-8") as f:
-                f.write(str(self.output_cloud_filepath) + "\n")
 
 
 class SurveyExecutor:
@@ -523,7 +504,7 @@ class CloudNoiseAdder:
         self.n_points: int | None = None
 
     def run(self):
-        print("Adding noise to point cloud ...")
+        print("Adding noise to point cloud ...\n")
         self.n_points = self.add_noise_to_cloud(
             self.input_filepath,
             self.output_filepath,
@@ -562,6 +543,7 @@ class CloudNoiseAdder:
         pipeline = writer.pipeline(point_array)
         n_points = pipeline.execute()
 
+        print()
         return n_points
 
 
@@ -791,14 +773,38 @@ class Scenario:
         self.survey.merge_clouds()
         # self.survey.add_noise()  # todo: remove
 
-    def postprocess_point_cloud(self):
-        pass
+    def process_point_cloud(self):
+        # Only run CloudNoiseAdder if a non-zero horizontal or vertical error is provided in the settings
+        if (
+                self.cloud_processing_config["std_horizontal_error"] != 0 or
+                self.cloud_processing_config["std_vertical_error"] != 0
+        ):
+            print(f"Scenario `{self.name}`: Preparing to add noise to point cloud ...\n")
+            filename = "clouds_merged_noise.laz"
+            final_cloud_filepath = Path(self.cloud_processing_config["cloud_processing_output_dirpath"]) / filename
+
+            noise_adder = CloudNoiseAdder(
+                input_filepath=self.merged_point_cloud_filepath,
+                output_filepath=final_cloud_filepath,
+                std_horizontal=self.cloud_processing_config["std_horizontal_error"],
+                std_vertical=self.cloud_processing_config["std_vertical_error"],
+                crs=self.crs
+            )
+
+            noise_adder.run()
+        else:
+            print(f"Scenario `{self.name}`: Not adding noise to point cloud - zero error set.\n")
+            # If no noise is added, the final cloud is the merged cloud from the survey
+            final_cloud_filepath = self.merged_point_cloud_filepath
+
+        with open(self.textfile_final_cloud_path_filepath, "a", encoding="utf-8") as f:
+            f.write(str(final_cloud_filepath) + "\n")
 
     def setup_reconstruction(self):
         self.reconstruction = Reconstruction(
             crs=self.config["crs"],
             config=self.reconstruction_config,
-            cloud_filepath=self.merged_point_cloud_filepath
+            cloud_filepath=self.final_point_cloud_filepath
         )
 
     def prepare_reconstruction(self):
@@ -810,22 +816,42 @@ class Scenario:
 
     def setup_evaluation(self):
         evaluators = [
-            AreaVolumeEvaluator(
-                output_base_dirpath=self.evaluation_output_dirpath,
-                input_cityjson_filepath=self.cityjson_output_filepath,
-                lods=["1.2", "1.3", "2.2"],
-                crs=self.crs
-            ),
-            IOU3DEvaluator(
-                output_base_dirpath=self.evaluation_output_dirpath,
+            AreaVolumeDifferenceEvaluator(
+                output_base_dirpath_1=self.input_evaluation_dirpath,
+                output_base_dirpath_2=self.output_evaluation_dirpath,
                 input_cityjson_filepath_1=self.cityjson_input_filepath,
                 input_cityjson_filepath_2=self.cityjson_output_filepath,
+                index_col_name=glb.geoflow_output_cityjson_identifier_name,
                 lods=["1.2", "1.3", "2.2"],
                 crs=self.crs
             ),
+            # todo: remove
+            # AreaVolumeEvaluator(
+            #     output_base_dirpath=self.evaluation_output_dirpath,
+            #     input_cityjson_filepath=self.cityjson_output_filepath,
+            #     index_col_name=glb.geoflow_output_cityjson_identifier_name,
+            #     lods=["1.2", "1.3", "2.2"],
+            #     crs=self.crs
+            # ),
+            IOU3DEvaluator(
+                output_base_dirpath=self.output_evaluation_dirpath,
+                input_cityjson_filepath_1=self.cityjson_input_filepath,
+                input_cityjson_filepath_2=self.cityjson_output_filepath,
+                index_col_name=glb.geoflow_output_cityjson_identifier_name,
+                lods=["1.2", "1.3", "2.2"],
+                crs=self.crs
+            ),
+            HausdorffLODSEvaluator(
+                output_base_dirpath=self.output_evaluation_dirpath,
+                input_obj_filepath_pairs={
+                    "12": (self.obj_input_lod12_filepath, self.obj_output_lod12_filepath),
+                    "13": (self.obj_input_lod13_filepath, self.obj_output_lod13_filepath),
+                    "22": (self.obj_input_lod22_filepath, self.obj_output_lod22_filepath)
+                }
+            ),
             PointDensityDatasetEvaluator(
-                output_base_dirpath=self.evaluation_output_dirpath,
-                point_cloud_filepath=self.merged_point_cloud_filepath,
+                output_base_dirpath=self.output_evaluation_dirpath,
+                point_cloud_filepath=self.final_point_cloud_filepath,
                 bbox=get_config_item(self.survey_config, "bbox"),
                 building_footprints=gpd.read_file(
                     self.building_footprints_filepath, layer=gpd.list_layers(self.building_footprints_filepath).name.loc[0]
@@ -833,17 +859,9 @@ class Scenario:
                 crs=self.crs,
                 save_filtered_point_clouds=True
             ),
-            HausdorffLODSEvaluator(
-                output_base_dirpath=self.evaluation_output_dirpath,
-                input_obj_filepath_pairs={
-                    "12": (self.obj_input_lod12_filepath, self.obj_output_lod12_filepath),
-                    "13": (self.obj_input_lod13_filepath, self.obj_output_lod13_filepath),
-                    "22": (self.obj_input_lod22_filepath, self.obj_output_lod22_filepath)
-                }
-            ),
             PointMeshDistanceEvaluator(
-                output_base_dirpath=self.evaluation_output_dirpath,
-                point_cloud_filepath=self.merged_point_cloud_filepath,
+                output_base_dirpath=self.output_evaluation_dirpath,
+                point_cloud_filepath=self.final_point_cloud_filepath,
                 mesh_filepath=self.obj_input_lod22_filepath,
                 crs=self.crs
             )
@@ -860,6 +878,52 @@ class Scenario:
         for evaluator_name in evaluator_selection:
             self.evaluators[evaluator_name].run()
 
+    # todo: remove - area and volume of input data are now computed by AreaVolumeDifferenceEvaluator
+    # def setup_input_evaluation(self, output_dirpath: Path | str | None = None):
+    #     if output_dirpath is None:
+    #         output_dirpath = self.input_evaluation_dirpath
+    #     output_dirpath.mkdir(exist_ok=True)
+    #
+    #     # todo: clean up this mess. either move variable definition to __init__(), or merge this method with
+    #     #  setup_evaluation().
+    #     input_evaluators = [
+    #         AreaVolumeEvaluator(
+    #             output_base_dirpath=output_dirpath,
+    #             input_cityjson_filepath=self.cityjson_input_filepath,
+    #             index_col_name="identificatie",  # todo: un-hardcode
+    #             lods=["1.2", "1.3", "2.2"],
+    #             crs=self.crs
+    #         )
+    #     ]
+    #
+    #     self.input_evaluators = {evaluator.name: evaluator for evaluator in input_evaluators}
+    #
+    # def run_input_evaluation(self):
+    #     for evaluator in self.input_evaluators:
+    #         evaluator.run()
+
+    def concat_evaluation_results(self, evaluator_selection: list[str] | str | None = None):
+        if evaluator_selection is None:
+            evaluator_selection = list(self.evaluators.keys())
+        elif isinstance(evaluator_selection, str):
+            evaluator_selection = [evaluator_selection]
+
+        for evaluator_name in evaluator_selection:
+            pass
+
+    def get_summary_statistics(self, evaluator_selection: list[str] | str | None = None) -> dict:
+        if evaluator_selection is None:
+            evaluator_selection = [name for name, evaluator in self.evaluators.items()]
+        else:
+            if isinstance(evaluator_selection, str):
+                evaluator_selection = [evaluator_selection]
+
+        summary_statistics = {}
+        for name in evaluator_selection:
+            summary_statistics.update(self.evaluators[name].summary_stats)
+
+        return summary_statistics
+
     @property
     def crs(self):
         return get_config_item(self.config, "crs")
@@ -869,8 +933,16 @@ class Scenario:
         return Path(get_config_item(self.config, "reconstruction_output_dirpath"))
 
     @property
-    def evaluation_output_dirpath(self):
+    def base_evaluation_dirpath(self):
         return Path(get_config_item(self.config, "evaluation_output_dirpath"))
+
+    @property
+    def output_evaluation_dirpath(self):
+        return self.base_evaluation_dirpath / self.name
+
+    @property
+    def input_evaluation_dirpath(self):
+        return self.base_evaluation_dirpath / "input"
 
     @property
     def geoflow_template_json(self) -> dict:
@@ -924,16 +996,22 @@ class Scenario:
         # Try to read the path to the merged point cloud file from the textfile that should have been created after
         # merging the clouds if the survey was already run
         textfile_merged_cloud_path_filepath = self.textfile_merged_cloud_path_filepath
-        try:
-            with open(textfile_merged_cloud_path_filepath, "r") as f:
-                filepaths = [fp[:-1] for fp in f.readlines()]  # remove \n
-        except FileNotFoundError as e:
-            print("Filepath of merged cloud for reconstruction is unknown without prior survey or merger run, "
-                  "and text file containing it from prior survey run does not exist.")
-            raise FileNotFoundError(e.errno, e.strerror, textfile_merged_cloud_path_filepath)
-        # The last line in the text file contains the final processed point cloud. (Usually, the first line is the path
-        # to the merged point cloud, and an optional second line is the path to the point cloud with added noise.)
-        return filepaths[-1]
+        error_message = ("Filepath of merged cloud for reconstruction is unknown without prior survey or merger run, "
+                         "and text file containing it from prior survey run does not exist.")
+        return get_last_line_from_file(textfile_merged_cloud_path_filepath, error_message)
+
+    @property
+    def textfile_final_cloud_path_filepath(self):
+        return str(Path(
+            self.cloud_processing_config["cloud_processing_output_dirpath"],
+            "final_cloud_filepath.txt"
+        ))
+
+    @property
+    def final_point_cloud_filepath(self):
+        textfile_final_cloud_path_filepath = self.textfile_final_cloud_path_filepath
+        error_message = "Text file containing path to final processed point cloud does not exist."
+        return get_last_line_from_file(textfile_final_cloud_path_filepath, error_message)
 
     @property
     def building_footprints_filepath(self):
@@ -950,7 +1028,6 @@ class Experiment:
             default_config: dict,
             scenario_settings: list[dict],
             scene_parts: list[dict],
-            footprint_config: dict | None = None
     ):
         """Experiment
 
@@ -959,7 +1036,6 @@ class Experiment:
         :param default_config: Default values for all scenarios
         :param scenario_settings: Specific settings for each scenario as a list of dictionaries
         :param scene_parts: List of dictionaries, each of which specifies details for an OBJ or TIF scene part
-        :param footprint_config: Optional (may already be contained in default_config): Dictionary that specifies
         building_footprints_filepath and building_identifier.
         """
         self.name = name
@@ -967,19 +1043,21 @@ class Experiment:
         self.default_config = default_config
         self.scenario_settings = scenario_settings
         self.scene_parts = scene_parts
-        self.footprint_config = footprint_config
 
         self.settings_dirpath = self.dirpath / "02_settings"
         self.scene_dirpath = self.dirpath / "03_scene"
         self.survey_dirpath = self.dirpath / "04_survey"
-        self.reconstruction_dirpath = self.dirpath / "05_reconstruction"
-        self.evaluation_dirpath = self.dirpath / "06_evaluation"
+        self.cloud_processing_dirpath = self.dirpath / "05_point_clouds"
+        self.reconstruction_dirpath = self.dirpath / "06_reconstruction"
+        self.evaluation_dirpath = self.dirpath / "07_evaluation"
 
         self.scene: Scene | None = None
         self.scene_xml_filepath = self.scene_dirpath / f"{self.name}_scene.xml"
 
         self.scenarios: dict[str, Scenario] = {}
         self.scenario_configs: dict[str, dict] = {}
+
+        self.summary_stats: pd.DataFrame | None = None
 
     def setup(self):
         """Call all setup functions for directories, scene, scenario configs, and scenarios"""
@@ -995,6 +1073,7 @@ class Experiment:
         self.settings_dirpath.mkdir(exist_ok=True)
         self.scene_dirpath.mkdir(exist_ok=True)
         self.survey_dirpath.mkdir(exist_ok=True)
+        self.cloud_processing_dirpath.mkdir(exist_ok=True)
         self.reconstruction_dirpath.mkdir(exist_ok=True)
         self.evaluation_dirpath.mkdir(exist_ok=True)
 
@@ -1019,10 +1098,6 @@ class Experiment:
 
     def setup_configs(self):
         """Setup individual config dictionaries for each scenario, and save them as JSON for reference"""
-        # If information on building footprints was provided as optional argument, integrate them into the config
-        if self.footprint_config is not None:
-            update_config_item(self.default_config, "building_footprints_filepath", self.footprint_config["building_footprints_filepath"])
-            update_config_item(self.default_config, "building_identifier", self.footprint_config["building_identifier"])
 
         for i, settings in enumerate(self.scenario_settings):
             # Potentially use a new class or function experiment_scenario_generator() here?
@@ -1034,15 +1109,19 @@ class Experiment:
             else:
                 scenario_name = f"scenario_{i:03}"
 
-            # Scenario-specific file and dir paths
+            # Scenario-specific dir paths
             Path(self.settings_dirpath, scenario_name).mkdir(exist_ok=True)
             Path(self.survey_dirpath, scenario_name).mkdir(exist_ok=True)
+            Path(self.cloud_processing_dirpath, scenario_name).mkdir(exist_ok=True)
             Path(self.reconstruction_dirpath, scenario_name).mkdir(exist_ok=True)
+
+            # Scenario-specific file paths
             flight_path_xml_filepath = self.survey_dirpath / scenario_name / "flight_path.xml"
             survey_xml_filepath = self.survey_dirpath / scenario_name / (scenario_name + "_survey.xml")
             survey_output_dirpath = self.survey_dirpath  # HELIOS creates subfolders: /scenario_name/date_time
+            cloud_processing_output_dirpath = self.cloud_processing_dirpath / scenario_name
             reconstruction_output_dirpath = self.reconstruction_dirpath / scenario_name  # reconstruct.json has output/
-            evaluation_output_dirpath = self.evaluation_dirpath / scenario_name
+            evaluation_output_dirpath = self.evaluation_dirpath  # / scenario_name  # todo:remove
 
             # Create a copy of the default config
             config = copy.deepcopy(self.default_config)
@@ -1056,6 +1135,7 @@ class Experiment:
             update_config_item(config, "flight_path_xml_filepath", str(flight_path_xml_filepath))
             update_config_item(config, "survey_xml_filepath", str(survey_xml_filepath))
             update_config_item(config, "survey_output_dirpath", str(survey_output_dirpath))
+            update_config_item(config, "cloud_processing_output_dirpath", str(cloud_processing_output_dirpath))
             update_config_item(config, "reconstruction_output_dirpath", str(reconstruction_output_dirpath))
             update_config_item(config, "evaluation_output_dirpath", str(evaluation_output_dirpath))
 
@@ -1115,8 +1195,13 @@ class Experiment:
             t1 = time.time()
             print(f"Finished setting up survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
 
-    def prepare_surveys(self):
-        for name, s in self.scenarios.items():
+    def prepare_surveys(self, scenario_selection: list[str] | None = None):
+        if scenario_selection is None:
+            scenarios = self.scenarios
+        else:
+            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+
+        for name, s in scenarios.items():
             print(f"Preparing survey for scenario {name} ...\n")
             t0 = time.time()
 
@@ -1125,8 +1210,13 @@ class Experiment:
             t1 = time.time()
             print(f"Finished preparing survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
 
-    def run_surveys(self):
-        for name, s in self.scenarios.items():
+    def run_surveys(self, scenario_selection: list[str] | None = None):
+        if scenario_selection is None:
+            scenarios = self.scenarios
+        else:
+            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+
+        for name, s in scenarios.items():
             print(f"Simulating survey for scenario {name} ...\n")
             t0 = time.time()
 
@@ -1134,6 +1224,21 @@ class Experiment:
 
             t1 = time.time()
             print(f"Finished simulating survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+
+    def process_point_clouds(self, scenario_selection: list[str] | None = None):
+        if scenario_selection is None:
+            scenarios = self.scenarios
+        else:
+            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+
+        for name, s in scenarios.items():
+            print(f"Processing point cloud for scenario {name} ...\n")
+            t0 = time.time()
+
+            s.process_point_cloud()
+
+            t1 = time.time()
+            print(f"Finished processing point cloud for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
 
     def setup_reconstructions(self):
         for name, s in self.scenarios.items():
@@ -1165,13 +1270,27 @@ class Experiment:
             t1 = time.time()
             print(f"Finished building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
-    def evaluate_input(self):
-        # For some standalone metrics, the input (ground truth) building models must be evaluated, too:
-        # - AreaVolumeEvaluator
-        # - ComplexityEvaluator (if used / implemented)
-        # - ...
-        # Probably implement for Scenario, and then execute here for only one of the scenarios (all use the same input)
-        pass
+    # todo: remove - area and volume of input data are now computed by AreaVolumeDifferenceEvaluator
+    # def setup_input_evaluation(self):
+    #     # For some standalone metrics, the input (ground truth) building models must be evaluated, too:
+    #     # - AreaVolumeEvaluator
+    #     # - ComplexityEvaluator (if used / implemented)
+    #     # - ...
+    #     # Probably implement for Scenario, and then execute here for only one of the scenarios (all use the same input)
+    #     output_dirpath = self.evaluation_dirpath / "input"
+    #     output_dirpath.mkdir(exist_ok=True)
+    #
+    #     first_scenario_name = list(self.scenarios.keys())[0]
+    #     print(f"Setting up input data evaluation (using scenario `{first_scenario_name}`) ...")
+    #     self.scenarios[first_scenario_name].setup_input_evaluation(output_dirpath=output_dirpath)
+    #     # todo: more mess to clean up!
+    #     self.input_evaluators = self.scenarios[first_scenario_name].input_evaluators
+    #
+    # def run_input_evaluation(self):
+    #     print(f"Evaluating input data ...")
+    #     for evaluator in self.input_evaluators:
+    #         evaluator.run()
+    #     print()
 
     def setup_evaluations(self):
         for name, s in self.scenarios.items():
@@ -1183,8 +1302,17 @@ class Experiment:
             t1 = time.time()
             print(f"Finished setting up evaluation for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
-    def run_evaluations(self, evaluator_selection: list[str] | str | None = None):
-        for name, s in self.scenarios.items():
+    def run_evaluations(
+            self,
+            scenario_selection: list[str] | None = None,
+            evaluator_selection: list[str] | str | None = None
+    ):
+        if scenario_selection is None:
+            scenarios = self.scenarios
+        else:
+            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+
+        for name, s in scenarios.items():
             print(f"Evaluating scenario {name} ...\n")
             t0 = time.time()
 
@@ -1193,207 +1321,35 @@ class Experiment:
             t1 = time.time()
             print(f"Finished evaluating scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
+    def compute_summary_statistics(self):
+        rows = []
 
-class Config:
+        for name, s in self.scenarios.items():
+            pulse_freq_hz = get_config_item(s.config, "pulse_freq_hz")
+            scan_freq_hz = get_config_item(s.config, "scan_freq_hz")
+            scan_angle_deg = get_config_item(s.config, "scan_angle_deg")
+            altitude = get_config_item(s.config, "altitude")
+            velocity = get_config_item(s.config, "velocity")
 
-    def __init__(
-            self,
-            config_dict: dict | None = None,
-            json_filepath: str | Path | None = None,
-            settings_snippet: dict | None = None,
-            make_default: bool = False
-    ):
-        # Takes a prepared config dictionary, a path to a json file with a config, a subset of a config as settings
-        # snippet, or generates a default config with make_default.
-        self.config = {}
+            cols = {
+                "name": s.name,
+                "pulse_freq_hz": pulse_freq_hz,
+                "point_spacing_along": point_spacing_along(velocity, scan_freq_hz),
+                "point_spacing_across": point_spacing_across(altitude, scan_angle_deg, pulse_freq_hz, scan_freq_hz),
+                "std_horizontal_error": get_config_item(s.config, "std_horizontal_error"),
+                "std_vertical_error": get_config_item(s.config, "std_vertical_error")
+            }
 
-    def __getitem__(self, item):
-        pass
+            cols.update(s.get_summary_statistics())
+            rows.append(cols)
 
-    def __setitem__(self, key, value):
-        # Corresponds to update_config_item()
-        pass
-
-    def make_default(self):
-        # Corresponds to scenario_default_config()
-        pass
-
-    def read_json(self, json_filepath: str | Path):
-        pass
-
-    def update(self, config_dict: dict):
-        # Corresponds to deep_update()
-        pass
-
-
-def deep_update(d: dict, u: dict | collections.abc.Mapping):
-    """Recursively update values in a dictionary. Slightly adapted from https://stackoverflow.com/a/3233356"""
-    for k, v in u.items():
-        if isinstance(v, collections.abc.Mapping):
-            d[k] = deep_update(d.get(k, {}), v)
-        else:
-            d[k] = v
-    return d
+        self.summary_stats = pd.DataFrame(rows).set_index("name")
+        self.summary_stats.to_csv(self.evaluation_dirpath / "summary_statistics.csv")
 
 
 def generate_scenario(name: str, config: dict, default_config: dict) -> Scenario:
     full_config = deep_update(default_config, config)
     return Scenario(name, config)
-
-
-def scenario_default_config():
-    scene_config = {
-        "scene_xml_filepath": "",
-        "scene_xml_id": "",
-        "scene_name": "",
-        "scene_parts": []
-    }
-
-    survey_generator_config = {
-        "survey_template_xml_filepath": str(Path(__file__).parent / "experiment" / "survey_template.xml"),
-        "survey_name": "",
-        "scene_xml_filepath_with_id": "",
-        "platform_id": "sr22",
-        "scanner_id": "riegl_vq-1560i",
-        "scanner_settings_id": "scanner_settings",
-        "scanner_settings_active": True,
-        "pulse_freq_hz": 500_000,
-        "scan_angle_deg": 15,
-        "scan_freq_hz": 300,
-        "detector_settings_accuracy": 0.0,  # 0.02
-    }
-
-    flight_path_config = {
-        "flight_path_xml_filepath": "",
-        "bbox": [83043, 446327, 83255, 446496],  # [West, South, East, North]
-        "spacing": 40,
-        "altitude": 100,
-        "velocity": 60,
-        "flight_pattern": "parallel",
-        "trajectory_time_interval": .05,
-        "always_active": False,
-        "scanner_settings_id": "scanner_settings"
-    }
-
-    survey_executor_config = {
-        "las_output": True,
-        "zip_output": True,
-        "num_threads": 0,
-    }
-
-    cloud_merge_config = {
-        "clouds_dirpath": "",  # UNUSED
-        "output_filepath": ""  # UNUSED
-    }
-
-    survey_config = {
-        "survey_xml_filepath": "",
-        "survey_output_dirpath": "",
-        "survey_generator_config": survey_generator_config,
-        "flight_path_config": flight_path_config,
-        "survey_executor_config": survey_executor_config,
-        "cloud_merge_config": cloud_merge_config,
-    }
-
-    cloud_processing_config = {
-        "std_horizontal_error": 0.0,
-        "std_vertical_error": 0.0
-    }
-
-    reconstruction_config = {
-        "config_toml_filepath": "",  # UNUSED
-        "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__()
-        "building_footprints_filepath": "",
-        "building_identifier": "",
-        "reconstruction_output_dirpath": "",
-        "geoflow_log_filepath": ""  # UNUSED
-    }
-
-    evaluation_config = {
-        "evaluation_output_dirpath": "",
-        "input_cityjson_filepath": "",  # Input building models CityJSON for experiment evaluation
-        "input_obj_lod12_filepath": "",
-        "input_obj_lod13_filepath": "",
-        "input_obj_lod22_filepath": ""
-    }
-
-    # Final scenario settings
-
-    scenario_config = {
-        "crs": "epsg:7415",
-        "scene_config": scene_config,
-        "survey_config": survey_config,
-        "cloud_processing_config": cloud_processing_config,
-        "reconstruction_config": reconstruction_config,
-        "evaluation_config": evaluation_config
-    }
-
-    return scenario_config
-
-
-def update_config_item(
-        config: dict,
-        key: str,
-        value: str | int | float | dict | list,
-        not_found_error: bool = True,
-        update_all: bool = True
-) -> bool | None:
-    """Recursively update all occurrences of 'key' in the config dictionary and all nested dictionaries with 'value'.
-
-    :param config: Config dictionary. May contain nested dictionaries.
-    :param key: Key to be updated.
-    :param value: Value to be set.
-    :param not_found_error: True: If key not found, raise error, else return None. False: Return whether key found.
-    :param update_all:
-    :return: If not_found_error==False: bool whether key was found; else: None if found, else raise KeyError.
-    """
-    found = False
-
-    if key in config.keys():
-        config[key] = value
-        found = True
-
-    # Check nested dictionaries
-    # for k, v in config.items():
-    #     if isinstance(v, dict):
-    #         found = update_config_item(v, key, value, not_found_error=False) or found
-
-    if update_all or not found:
-        # Check nested dictionaries
-        for k, v in config.items():
-            if isinstance(v, dict):
-                found = update_config_item(v, key, value, not_found_error=False) or found
-            if found and not update_all:
-                break
-
-    if not_found_error:
-        if not found:
-            raise KeyError(f"Key '{key}' not found.")
-        else:
-            return None
-    else:
-        return found
-
-
-def get_config_item(config: dict, key: str, not_found_error: bool = True):
-    """Recursively finds and returns the value of the 1st occurrence of `key` in `config` or any of its sub-dictionaries
-
-    Does not check for multiple occurrences of `key` in `config` or any of its sub-dictionaries. Raises a KeyError if
-    the `key` is not found."""
-    if key in config.keys():
-        return config[key]
-    else:
-        for k, v in config.items():
-            if isinstance(v, dict):
-                value = get_config_item(v, key, not_found_error=False)
-                # `value` is None if the key was not found, otherwise it is the key's value.
-                if value is not None:
-                    return value
-
-    if not_found_error:
-        raise KeyError(f"Key '{key}' not found.")
-    else:
-        return None
 
 
 if __name__ == "__main__":
