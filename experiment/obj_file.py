@@ -116,14 +116,24 @@ class OBJFile:
         dirpath.mkdir(exist_ok=True)
 
         for o in self.objects:
-            output_filepath = dirpath / f"{o.name}.obj"
-            if overwrite or not output_filepath.is_file():
-                o.write(output_filepath, vertices=self.vertices, mtllib=self.mtllib)
-                # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
+            # Only write to OBJ file if object has at least 1 face
+            if len(o.faces) > 0:
+                output_filepath = dirpath / f"{o.name}.obj"
+                if overwrite or not output_filepath.is_file():
+                    o.write(output_filepath, vertices=self.vertices, mtllib=self.mtllib)
+                    # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
 
         if self.mtllib is not None and self.mtllib != "":
             if overwrite or not (dirpath / self.mtllib).is_file():
                 copy2(self.filepath.parent / self.mtllib, dirpath / self.mtllib)
+
+    @property
+    def num_faces(self):
+        return {o.name: o.num_faces for o in self.objects}
+
+    @property
+    def num_triangles(self):
+        return {o.name: o.num_triangles for o in self.objects}
 
 
 class OBJFace:
@@ -159,9 +169,9 @@ class OBJObject:
         return sorted(vertex_ids)
 
     def write(self, filepath: Path | str, vertices: list[list[str]], mtllib: str | None = None):
-        # Problem: Only OBJ has vertices. They are not a property of Face. Face has only vertex_ids.
-        # Could give Face the vertex coordinates, but then would have to make sure that there are no duplicate vertices
-        # when writing the object to an individual file.
+        # Problem: Only OBJFile has vertices. They are not a property of OBJFace. OBJFace has only vertex_ids.
+        # Could give OBJFace the vertex coordinates, but then would have to make sure that there are no duplicate
+        # vertices when writing the object to an individual file.
         # For now: Solved by passing the list of vertices from OBJFile to OBJObject
 
         filepath = Path(filepath)
@@ -197,3 +207,11 @@ class OBJObject:
 
         with open(filepath, "w", encoding="utf-8") as file:
             file.writelines(lines)
+
+    @property
+    def num_faces(self):
+        return len(self.faces)
+
+    @property
+    def num_triangles(self):
+        return sum([len(f.vertex_ids) - 2 for f in self.faces])
