@@ -1,7 +1,10 @@
 import subprocess
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 from pathlib import Path
+
+from experiment.obj_file import OBJFile
 
 
 def execute_subprocess(cmd):
@@ -40,14 +43,22 @@ def get_last_line_from_file(filepath: Path | str, error_message: str = "") -> st
     return filepaths[-1]
 
 
-def scan_freq_from_pulse_freq_via_point_spacing(pulse_freq_hz, altitude, velocity, scan_angle_deg):
+def scan_freq_from_pulse_freq_via_point_spacing(
+        pulse_freq_hz: float,
+        altitude: float,
+        velocity: float,
+        scan_angle_deg: float
+):
     # Adjustment factors to decrease scan frequency / relatively increase pulse frequency
     # -> increase along-track point spacing
     # -> make it more similar to across-track point spacing
     # If the actual formula would work, then this factor should be unnecessary.
     adjustment_factors = [1, 1/3, 1/np.pi]
     adjustment_factor = adjustment_factors[1]
-    return np.sqrt(adjustment_factor * 0.5 * pulse_freq_hz * velocity / altitude / np.tan(1.0 * scan_angle_deg * np.pi / 180))
+    return np.sqrt(
+        adjustment_factor * 0.5 * pulse_freq_hz * velocity
+        / altitude / np.tan(1.0 * scan_angle_deg * np.pi / 180)
+    )
 
 
 def point_spacing_along(velocity, scan_freq_hz):
@@ -55,10 +66,66 @@ def point_spacing_along(velocity, scan_freq_hz):
     return velocity / scan_freq_hz
 
 
-def point_spacing_across(altitude, scan_angle_deg, pulse_freq_hz, scan_freq_hz):
+def point_spacing_across(altitude: float, scan_angle_deg: float, pulse_freq_hz: float, scan_freq_hz: float):
     # vertical_point_spacing = (2 * altitude * np.tan(scan_angle_deg / 2) * scan_freq_hz) / pulse_freq_hz
     return 2 * altitude * np.tan(scan_angle_deg * np.pi / 180) * scan_freq_hz / pulse_freq_hz
 
 
 def rms(x: list | np.ndarray | pd.Series):
     return np.sqrt(np.mean(np.square(x)))
+
+
+def get_face_count_from_gpkg(
+        gpkg_filepath: Path | str,
+        layer_name: str,
+        id_column: str,
+        result_col_name: str = "n_faces",
+        aggregate_by_id: bool = True
+) -> pd.Series:
+    """
+
+    :param gpkg_filepath: Path to Geopackage file
+    :param layer_name: Name of layer in Geopackage
+    :param id_column: Column that serves as identifier. Is used as index for returned Series.
+    :param result_col_name: Name of the column containing the face counts.
+    :param aggregate_by_id: Whether to sum up faces for rows (features) with identical values in `id_column`
+    :return: A pandas.Series with the numbers of faces and the `id_column` as index.
+    """
+    # Note that it would, in theory, also be possible to dissolve the geometries by the id_column before counting the
+    # number of faces / polygons in each geometry. However, this approach has two problems. First, it not only combines
+    # multiple geometries with identical IDs, but it also turns them from a MultiPolygon Z to a single Polygon Z, which
+    # means that a single polygon is returned instead of a multipolygon consisting of triangles. This could perhaps be
+    # undone by triangulating it again. Second and worse, however, because GeoPandas and Shapely only operate in 2D, it
+    # seems that the 3rd dimension is dropped, and the single Polygon Z that is returned actually only consists of the
+    # building footprint. Thus, the dissolve is not viable. Instead, aggregate the number of faces after counting them.
+    gpkg = gpd.read_file(gpkg_filepath, layer=layer_name)
+    gpkg[result_col_name] = gpkg.apply(lambda x: len(x.geometry.geoms), axis=1)
+    if aggregate_by_id:
+        gpkg = gpkg[[id_column, result_col_name]].groupby(id_column)[result_col_name].sum()  # returns a Series
+    else:
+        gpkg = gpkg.set_index(id_column)
+        gpkg = gpkg[result_col_name].copy()  # make a Series
+    return gpkg
+
+
+def get_face_count_from_obj(
+        obj_filepath: Path | str,
+        result_col_name: str = "n_faces",
+        ensure_as_triangle_count: bool = False
+) -> pd.Series:
+    obj = OBJFile(obj_filepath)
+    n_faces = obj.num_triangles if ensure_as_triangle_count else obj.num_faces
+    return pd.Series(data=list(n_faces.values()), index=list(n_faces.keys()), name=result_col_name)
+
+
+def describe_value_counts(series: list | np.ndarray | pd.Series):
+    if not isinstance(series, pd.Series):
+        series = pd.Series(series)
+
+    vc = series.value_counts()
+    return {
+        "num_total": len(series),
+        "num_unique": series.nunique(),
+        "num_multiple": sum(vc > 1),
+        "val_multiple": vc[vc > 1].to_dict()
+    }
