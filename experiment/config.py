@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 class Config:
+    """As of now unused class Config. Possibly to replace dictionary configs later."""
 
     def __init__(
             self,
@@ -99,7 +100,7 @@ def scenario_default_config():
     }
 
     cloud_processing_config = {
-        "cloud_prc_output_dirpath": "",
+        "cloud_processing_output_dirpath": "",
         "std_horizontal_error": 0.0,
         "std_vertical_error": 0.0
     }
