@@ -68,10 +68,11 @@ class FMEPipelineAreaVolume(FMEPipeline):
         self.input_cityjson_filepath = Path(input_cityjson_filepath)
 
         self.output_cityjson_filepath = (
-            self.output_dirpath / (self.input_cityjson_filepath.stem + f"_fme_area_volume_lod{self.lod.replace('.','')}.json")
+            self.output_dirpath /
+            (self.input_cityjson_filepath.stem + f"_fme_area_volume_lod{self.lod.replace('.','')}.json")
         )
         self.stdout_log_filepath = (
-            self.output_dirpath / (self.output_cityjson_filepath.stem + "log")
+            self.output_dirpath / (self.output_cityjson_filepath.stem + ".log")
         )
 
         self.fme_workspace_filepath = glb.fme_workspace_area_volume_filepath
@@ -101,7 +102,8 @@ class FMEPipelineIOU3D(FMEPipeline):
         self.input_cityjson_filepath_2 = Path(input_cityjson_filepath_2)
 
         self.output_cityjson_filepath = (
-            self.output_dirpath / (self.input_cityjson_filepath_2.stem + f"_fme_iou3d_lod{self.lod.replace('.','')}.json")
+            self.output_dirpath /
+            (self.input_cityjson_filepath_2.stem + f"_fme_iou3d_lod{self.lod.replace('.','')}.json")
         )
         self.stdout_log_filepath = (
             self.output_dirpath / (self.output_cityjson_filepath.stem + "log")
