@@ -1,8 +1,6 @@
+from experiment.config import scenario_default_config
 from experiment.scenario import *
 from pathlib import Path
-import numpy as np
-
-from experiment.scene_part import ScenePartOBJ, ScenePartTIFF
 
 
 def test_experiment():
@@ -42,9 +40,9 @@ def test_experiment():
 
     e.setup()
 
-    e.setup_surveys()
+    e.run_step(Scenario.setup_survey)
 
-    e.run_surveys()
+    e.run_step(Scenario.run_survey)
 
 
 if __name__ == "__main__":
