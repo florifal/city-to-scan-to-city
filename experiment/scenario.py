@@ -4,9 +4,7 @@ import json
 import time
 import datetime
 import shutil
-
-import pandas as pd
-
+from typing import Callable, Any
 import pyhelios
 import copy
 from datetime import timedelta
@@ -814,6 +812,9 @@ class Scenario:
     def run_reconstruction(self):
         self.reconstruction.run()
 
+    def check_reconstruction_results(self):
+        pass
+
     def setup_evaluation(self):
         evaluators = [
             AreaVolumeDifferenceEvaluator(
@@ -821,7 +822,8 @@ class Scenario:
                 output_base_dirpath_2=self.output_evaluation_dirpath,
                 input_cityjson_filepath_1=self.cityjson_input_filepath,
                 input_cityjson_filepath_2=self.cityjson_output_filepath,
-                index_col_name=glb.geoflow_output_cityjson_identifier_name,
+                index_col_name_1="",  # 3DBAG CityJSON file has correct index (loaded with cjio), but index has no name
+                index_col_name_2=glb.geoflow_output_cityjson_identifier_name,
                 lods=["1.2", "1.3", "2.2"],
                 crs=self.crs
             ),
@@ -849,6 +851,20 @@ class Scenario:
                     "22": (self.obj_input_lod22_filepath, self.obj_output_lod22_filepath)
                 }
             ),
+            ComplexityEvaluator(
+                output_base_dirpath=self.output_evaluation_dirpath,
+                input_filepath=self.geopackage_output_filepath,
+                lods=["1.2", "1.3", "2.2"],
+                index_col_name="OGRLoader.identificatie"
+            ),
+            # ComplexityEvaluator(
+            #     output_base_dirpath=self.output_evaluation_dirpath,
+            #     input_filepath=[self.obj_output_lod12_filepath,
+            #                     self.obj_output_lod13_filepath,
+            #                     self.obj_output_lod22_filepath],
+            #     lods=["1.2", "1.3", "2.2"],
+            #     ignore_meshes_with_zero_faces=True
+            # ),
             PointDensityDatasetEvaluator(
                 output_base_dirpath=self.output_evaluation_dirpath,
                 point_cloud_filepath=self.final_point_cloud_filepath,
@@ -864,6 +880,20 @@ class Scenario:
                 point_cloud_filepath=self.final_point_cloud_filepath,
                 mesh_filepath=self.obj_input_lod22_filepath,
                 crs=self.crs
+            ),
+            GeoflowOutputEvaluator(
+                output_base_dirpath=self.output_evaluation_dirpath,
+                gpkg_filepath=self.geopackage_output_filepath,
+                gpkg_layers=dict(zip(
+                    ["1.2", "1.3", "2.2"],
+                    [self.geoflow_template_json["nodes"][f"OGRWriter-LoD{lod}-3D"]["parameters"]["layername"]
+                     for lod in ["12", "13", "22"]]
+                )),
+                cityjson_filepath=self.cityjson_output_filepath,
+                obj_filepaths=dict(zip(
+                    ["1.2", "1.3", "2.2"],
+                    [self.obj_output_lod12_filepath, self.obj_output_lod13_filepath, self.obj_output_lod22_filepath]
+                ))
             )
         ]
 
@@ -908,8 +938,11 @@ class Scenario:
         elif isinstance(evaluator_selection, str):
             evaluator_selection = [evaluator_selection]
 
-        for evaluator_name in evaluator_selection:
-            pass
+        results_final = pd.concat(
+            [self.evaluators[name].results_final for name in evaluator_selection],
+            axis=1
+        )
+        results_final.to_csv(self.output_evaluation_dirpath / "evaluation_results.csv")
 
     def get_summary_statistics(self, evaluator_selection: list[str] | str | None = None) -> dict:
         if evaluator_selection is None:
@@ -958,6 +991,10 @@ class Scenario:
         # Equivalents:
         # return get_config_item(self.config, "input_cityjson_filepath")
         return self.evaluation_config["input_cityjson_filepath"]
+
+    @property
+    def geopackage_output_filepath(self):
+        return self.reconstruction_output_dirpath / Path(self.geoflow_template_json["globals"]["output_ogr"][2])
 
     @property
     def obj_input_lod12_filepath(self):
@@ -1182,93 +1219,112 @@ class Experiment:
     def run_scenario(self, name: str | None = None, number: int | None = None, scenario: Scenario | None = None):
         pass
 
-    def run_step(self, name: str, function: object):
-        pass
+    def run_step(self, step: Callable[[Scenario], Any], scenarios: list[str] | None = None, *args, **kwargs):
+        """Run a Scenario step (a method of the class) for all or a selection of this Experiment's scenarios.
 
-    def setup_surveys(self):
-        for name, s in self.scenarios.items():
-            print(f"Setting up survey for scenario {name} ...\n")
-            t0 = time.time()
+        Additional arguments of the method that is to be run can be given as *args or **kwargs."""
 
-            s.setup_survey()
-
-            t1 = time.time()
-            print(f"Finished setting up survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
-
-    def prepare_surveys(self, scenario_selection: list[str] | None = None):
-        if scenario_selection is None:
+        if scenarios is None:
             scenarios = self.scenarios
         else:
-            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+            if isinstance(scenarios, str):
+                scenarios = [scenarios]
+            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenarios}
 
         for name, s in scenarios.items():
-            print(f"Preparing survey for scenario {name} ...\n")
+            print(f"Running '{step.__name__}' for {name} ...\n")
             t0 = time.time()
 
-            s.prepare_survey()
+            step(s, *args, **kwargs)
 
             t1 = time.time()
-            print(f"Finished preparing survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+            print(f"Finished '{step.__name__}' for {name} after {str(timedelta(seconds=t1 - t0))}.\n")
 
-    def run_surveys(self, scenario_selection: list[str] | None = None):
-        if scenario_selection is None:
-            scenarios = self.scenarios
-        else:
-            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
-
-        for name, s in scenarios.items():
-            print(f"Simulating survey for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.run_survey()
-
-            t1 = time.time()
-            print(f"Finished simulating survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
-
-    def process_point_clouds(self, scenario_selection: list[str] | None = None):
-        if scenario_selection is None:
-            scenarios = self.scenarios
-        else:
-            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
-
-        for name, s in scenarios.items():
-            print(f"Processing point cloud for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.process_point_cloud()
-
-            t1 = time.time()
-            print(f"Finished processing point cloud for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
-
-    def setup_reconstructions(self):
-        for name, s in self.scenarios.items():
-            print(f"Setting up building reconstruction for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.setup_reconstruction()
-
-            t1 = time.time()
-            print(f"Finished setting up building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
-
-    def prepare_reconstructions(self):
-        for name, s in self.scenarios.items():
-            print(f"Preparing building reconstruction for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.prepare_reconstruction()
-
-            t1 = time.time()
-            print(f"Finished preparing building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
-
-    def run_reconstructions(self):
-        for name, s in self.scenarios.items():
-            print(f"Reconstructing buildings for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.run_reconstruction()
-
-            t1 = time.time()
-            print(f"Finished building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
+    # todo: remove - use Experiment.run_step() instead
+    # def setup_surveys(self):
+    #     for name, s in self.scenarios.items():
+    #         print(f"Setting up survey for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.setup_survey()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished setting up survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+    #
+    # def prepare_surveys(self, scenario_selection: list[str] | None = None):
+    #     if scenario_selection is None:
+    #         scenarios = self.scenarios
+    #     else:
+    #         scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+    #
+    #     for name, s in scenarios.items():
+    #         print(f"Preparing survey for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.prepare_survey()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished preparing survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+    #
+    # def run_surveys(self, scenario_selection: list[str] | None = None):
+    #     if scenario_selection is None:
+    #         scenarios = self.scenarios
+    #     else:
+    #         scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+    #
+    #     for name, s in scenarios.items():
+    #         print(f"Simulating survey for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.run_survey()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished simulating survey for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+    #
+    # def process_point_clouds(self, scenario_selection: list[str] | None = None):
+    #     if scenario_selection is None:
+    #         scenarios = self.scenarios
+    #     else:
+    #         scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+    #
+    #     for name, s in scenarios.items():
+    #         print(f"Processing point cloud for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.process_point_cloud()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished processing point cloud for scenario {name} after {str(timedelta(seconds=t1 - t0))}.\n")
+    #
+    # def setup_reconstructions(self):
+    #     for name, s in self.scenarios.items():
+    #         print(f"Setting up building reconstruction for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.setup_reconstruction()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished setting up building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
+    #
+    # def prepare_reconstructions(self):
+    #     for name, s in self.scenarios.items():
+    #         print(f"Preparing building reconstruction for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.prepare_reconstruction()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished preparing building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
+    #
+    # def run_reconstructions(self):
+    #     for name, s in self.scenarios.items():
+    #         print(f"Reconstructing buildings for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.run_reconstruction()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished building reconstruction for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
     # todo: remove - area and volume of input data are now computed by AreaVolumeDifferenceEvaluator
     # def setup_input_evaluation(self):
@@ -1292,34 +1348,35 @@ class Experiment:
     #         evaluator.run()
     #     print()
 
-    def setup_evaluations(self):
-        for name, s in self.scenarios.items():
-            print(f"Setting up evaluation for scenario {name} ...\n")
-            t0 = time.time()
-
-            s.setup_evaluation()
-
-            t1 = time.time()
-            print(f"Finished setting up evaluation for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
-
-    def run_evaluations(
-            self,
-            scenario_selection: list[str] | None = None,
-            evaluator_selection: list[str] | str | None = None
-    ):
-        if scenario_selection is None:
-            scenarios = self.scenarios
-        else:
-            scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
-
-        for name, s in scenarios.items():
-            print(f"Evaluating scenario {name} ...\n")
-            t0 = time.time()
-
-            s.run_evaluation(evaluator_selection)
-
-            t1 = time.time()
-            print(f"Finished evaluating scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
+    # todo: remove - use Experiment.run_step() instead
+    # def setup_evaluations(self):
+    #     for name, s in self.scenarios.items():
+    #         print(f"Setting up evaluation for scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.setup_evaluation()
+    #
+    #         t1 = time.time()
+    #         print(f"Finished setting up evaluation for scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
+    #
+    # def run_evaluations(
+    #         self,
+    #         scenario_selection: list[str] | None = None,
+    #         evaluator_selection: list[str] | str | None = None
+    # ):
+    #     if scenario_selection is None:
+    #         scenarios = self.scenarios
+    #     else:
+    #         scenarios = {name: scenario for name, scenario in self.scenarios.items() if name in scenario_selection}
+    #
+    #     for name, s in scenarios.items():
+    #         print(f"Evaluating scenario {name} ...\n")
+    #         t0 = time.time()
+    #
+    #         s.run_evaluation(evaluator_selection)
+    #
+    #         t1 = time.time()
+    #         print(f"Finished evaluating scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
     def compute_summary_statistics(self):
         rows = []
