@@ -9,7 +9,8 @@ from experiment.obj_file import OBJFile
 
 def execute_subprocess(cmd):
     """Run a subprocess and yield (return an iterable of) all stdout lines. From: https://stackoverflow.com/a/4417735"""
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)  # text=True: stdout as string not bytes
+    # text=True: stdout as string not bytes
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for stdout_line in iter(process.stdout.readline, ""):
         yield stdout_line
     process.stdout.close()
