@@ -106,7 +106,7 @@ class FMEPipelineIOU3D(FMEPipeline):
             (self.input_cityjson_filepath_2.stem + f"_fme_iou3d_lod{self.lod.replace('.','')}.json")
         )
         self.stdout_log_filepath = (
-            self.output_dirpath / (self.output_cityjson_filepath.stem + "log")
+            self.output_dirpath / (self.output_cityjson_filepath.stem + ".log")
         )
 
         self.fme_workspace_filepath = glb.fme_workspace_iou3d_filepath
