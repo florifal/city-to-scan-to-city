@@ -7,7 +7,7 @@ import shutil
 from typing import Callable, Any
 import pyhelios
 import copy
-from datetime import timedelta
+from datetime import timedelta, datetime
 from xml.etree import ElementTree as eT
 from scipy.spatial import KDTree
 
@@ -555,7 +555,8 @@ class Reconstruction:
         self.cloud_filepath = cloud_filepath if cloud_filepath != "" else self.config["point_cloud_filepath"]
         self.geoflow_json_filepath = Path(self.output_dirpath, "reconstruct.json")
         self.config_toml_filepath = Path(self.output_dirpath, "config.toml")
-        self.geoflow_log_filepath = Path(self.output_dirpath, "geoflow_log.txt")
+        date_time = datetime.today().strftime("%y%m%d-%H%M%S")
+        self.geoflow_log_filepath = Path(self.output_dirpath, f"geoflow_log_{date_time}.txt")
 
         self.executor: ReconstructionExecutor | None = None
 
@@ -610,10 +611,10 @@ class Reconstruction:
         # Option --workdir makes sure "output" directory is created at the location of the reconstruction.json
         self.executor = ReconstructionExecutor(
             geoflow_cmd=glb.geoflow_cmd,
-            geoflow_json_filepath=str(self.geoflow_json_filepath),
-            config_toml_filepath=str(self.config_toml_filepath),
+            geoflow_json_filepath=self.geoflow_json_filepath,
+            config_toml_filepath=self.config_toml_filepath,
             cmd_options=f"--verbose --workdir --config {self.config_toml_filepath.as_posix()}",
-            stdout_log_filepath=str(self.geoflow_log_filepath)
+            stdout_log_filepath=self.geoflow_log_filepath
         )
 
     def run(self):
@@ -651,9 +652,9 @@ class ReconstructionExecutor:
     def __init__(
             self,
             geoflow_cmd: str,
-            geoflow_json_filepath: str,
-            stdout_log_filepath: str,
-            config_toml_filepath: str = "",
+            geoflow_json_filepath: Path | str,
+            stdout_log_filepath: Path | str,
+            config_toml_filepath: Path | str = "",
             cmd_options: str | list[str] = "",
             very_verbose: bool = False
     ):
@@ -865,6 +866,12 @@ class Scenario:
             #     lods=["1.2", "1.3", "2.2"],
             #     ignore_meshes_with_zero_faces=True
             # ),
+            HeightEvaluator(
+                output_base_dirpath=self.output_evaluation_dirpath,
+                input_cityjson_filepath_1=self.cityjson_input_filepath,
+                input_cityjson_filepath_2=self.cityjson_output_filepath,
+                identifier_name=glb.geoflow_output_cityjson_identifier_name
+            ),
             PointDensityDatasetEvaluator(
                 output_base_dirpath=self.output_evaluation_dirpath,
                 point_cloud_filepath=self.final_point_cloud_filepath,
@@ -1095,6 +1102,9 @@ class Experiment:
         self.scenario_configs: dict[str, dict] = {}
 
         self.summary_stats: pd.DataFrame | None = None
+
+    def __getitem__(self, item):
+        return list(self.scenarios.values())[item]
 
     def setup(self):
         """Call all setup functions for directories, scene, scenario configs, and scenarios"""
