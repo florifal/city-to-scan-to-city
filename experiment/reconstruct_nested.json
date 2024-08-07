@@ -1440,7 +1440,8 @@
         "multi_triangle_collections": true,
         "normals": false,
         "ring_ids": false,
-        "triangles": false
+        "triangles": false,
+        "volumes": true
       },
       "parameters": {
         "dupe_threshold_exp": 4,
@@ -1477,7 +1478,8 @@
         "multi_triangle_collections": true,
         "normals": false,
         "ring_ids": false,
-        "triangles": false
+        "triangles": false,
+        "volumes": true
       },
       "parameters": {
         "dupe_threshold_exp": 4,
@@ -1514,7 +1516,8 @@
         "multi_triangle_collections": true,
         "normals": false,
         "ring_ids": false,
-        "triangles": false
+        "triangles": false,
+        "volumes": true
       },
       "parameters": {
         "dupe_threshold_exp": 4,
