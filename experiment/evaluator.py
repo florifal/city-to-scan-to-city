@@ -1,3 +1,4 @@
+import cjio.cityjson
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -19,7 +20,7 @@ def print_starting_message(func):
     def wrapper(self):
         print(f"Starting {self.__class__.__name__} ...\n")
         func(self)
-        print(f"Finished {self.__class__.__name__}.\n")
+        print(f"\nFinished {self.__class__.__name__}.\n")
     return wrapper
 
 
@@ -135,7 +136,15 @@ class Evaluator:
 
     @property
     def results_final(self) -> pd.DataFrame:
-        return self.results[self.final_columns]
+        if isinstance(self, BuildingsEvaluator):
+            return pd.concat([
+                self.results[self.final_columns],
+                self.results[self.final_columns].describe(),  # add summary statistics
+                pd.DataFrame(self.results[self.final_columns].apply(rms).rename("rms")).transpose()  # add RMS
+            ], axis=0)
+        else:
+            return self.results[self.final_columns]
+
 
 
 class DatasetEvaluator(Evaluator):
@@ -315,16 +324,10 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
         distances = compute_point_mesh_distance(point_array, self.mesh_filepath)
 
         self.results_df = pd.DataFrame(
-            pd.Series(
-                name="point_mesh_distance",
-                data={
-                    "rms": np.sqrt(np.mean(np.square(distances))),
-                    "mean": distances.mean(),
-                    "median": np.median(distances),
-                    "min": distances.min(),
-                    "max": distances.max()
-                }
-            )
+            pd.concat([
+                pd.Series(distances).describe(),
+                pd.Series({"rms": rms(distances)})
+            ]).rename("point_mesh_distance")
         )
 
         self.points_and_distances = np.concatenate((point_array, np.transpose([distances])), axis=1)
@@ -368,6 +371,7 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
 
 
 class GeoflowOutputEvaluator(DatasetEvaluator):
+    """Counts the numbers of (unique) buildings, buildings parts, and related values in Geoflow output files"""
     name = "geoflow_output"
 
     def __init__(
@@ -536,6 +540,123 @@ class WavefrontOBJBuildingsEvaluator(DatasetEvaluator):
         self.results_df = pd.DataFrame.from_dict(obj_building_stats, orient="columns")
         self.output_csv_filepath: Path = self.output_dirpath / f"evaluation_{WavefrontOBJBuildingsEvaluator.name}.csv"
         self.save_results()
+
+
+class HeightEvaluator(BuildingsEvaluator):
+    """Obtains building heights from two CityJSON files for corresponding buildings and computes difference metrics"""
+    name = "height"
+    height_metrics = ["min", "50p", "70p", "max", "ground"]
+
+    def __init__(
+            self,
+            output_base_dirpath: Path | str,
+            input_cityjson_filepath_1: Path | str,
+            input_cityjson_filepath_2: Path | str,
+            identifier_name: str,
+            height_metrics: list[str] | None = None
+    ):
+        super().__init__(output_base_dirpath)
+        self.input_cityjson_filepath_1 = Path(input_cityjson_filepath_1)
+        self.input_cityjson_filepath_2 = Path(input_cityjson_filepath_2)
+        self.identifier_name = identifier_name
+
+        if height_metrics is not None:
+            self.height_metrics = height_metrics
+
+        self.cityjson_1: cityjson.CityJSON | None = None
+        self.cityjson_2: cityjson.CityJSON | None = None
+
+        self.final_columns = [
+            col_name
+            for height_metric in self.height_metrics
+            for col_name in [
+                f"h_{height_metric}_in",
+                f"h_{height_metric}_out",
+                f"h_{height_metric}_diff",
+                f"h_{height_metric}_abs_diff",
+                f"h_{height_metric}_ratio",
+                f"h_{height_metric}_norm_diff",
+                f"h_{height_metric}_norm_abs_diff"
+            ]
+        ]
+
+    def load_cityjson_files(self):
+        print("Loading CityJSON files ...")
+        self.cityjson_1 = cityjson.load(self.input_cityjson_filepath_1)
+        self.cityjson_2 = cityjson.load(self.input_cityjson_filepath_2)
+
+    def get_building_heights(self):
+        buildings_1 = self.cityjson_1.get_cityobjects(type="building")
+        buildings_2 = self.cityjson_2.get_cityobjects(type="building")
+
+        heights = {}
+
+        print("Reading building heights from output CityJSON file ...")
+        # Get the heights from all buildings in cityjson_2, and use the identifier in the field `identifier_name` as key
+        for b in buildings_2.values():
+            heights[b.attributes[self.identifier_name]] = {
+                f"h_{height_metric}_out": b.attributes[glb.geoflow_output_height_attr_names[height_metric]]
+                for height_metric in self.height_metrics
+            }
+
+        print("Reading building heights from input CityJSON file ...")
+        # Get the heights from the corresponding buildings in cityjson_1 as identified by the keys
+        for identifier in heights.keys():
+            heights[identifier].update({
+                f"h_{height_metric}_in": buildings_1[identifier].attributes[glb.geoflow_input_height_attr_names[height_metric]]
+                for height_metric in self.height_metrics
+            })
+
+        self.results_df = pd.DataFrame.from_dict(heights, orient="index")
+
+    def compute_height_differences(self):
+        print("Computing building height differences ...")
+        for height_metric in self.height_metrics:
+            prefix = f"h_{height_metric}_"
+            metric_in = self.results_df[prefix + "in"]
+            metric_out = self.results_df[prefix + "out"]
+            self.results_df[prefix + "diff"] = metric_out - metric_in
+            self.results_df[prefix + "abs_diff"] = self.results_df[prefix + "diff"].abs()
+            self.results_df[prefix + "ratio"] = metric_out / metric_in
+            self.results_df[prefix + "norm_diff"] = (self.results_df[prefix + "diff"] / metric_in.abs())
+            self.results_df[prefix + "norm_abs_diff"] = (self.results_df[prefix + "abs_diff"] / metric_in.abs())
+
+    @print_starting_message
+    def run(self):
+        self.load_cityjson_files()
+        self.get_building_heights()
+        self.compute_height_differences()
+        self.save_results()
+
+    def compute_summary_stats(self):
+        self._summary_stats = {}
+        for height_metric in self.height_metrics:
+            prefix = f"h_{height_metric}_"
+            results_available = self.results[
+                ~self.results[prefix + "out"].isna() &
+                ~self.results[prefix + "in"].isna()
+            ]
+            self._summary_stats.update(
+                self.results[prefix + "out"].describe().add_prefix(prefix + "out_").to_dict()
+            )
+            self._summary_stats.update({
+                prefix + "mean_diff": self.results[prefix + "diff"].mean(),
+                prefix + "median_diff": self.results[prefix + "diff"].median(),
+                prefix + "mean_abs_diff": self.results[prefix + "abs_diff"].mean(),
+                prefix + "median_abs_diff": self.results[prefix + "abs_diff"].median(),
+                prefix + "rms_diff": rms(self.results[prefix + "diff"]),
+
+                # Mean of the normalized (absolute) difference and normalized mean (absolute) difference. For
+                # post-averaging normalization, divide by the absolute value of the reference input metric to retain
+                # the sign of the mean. Since number of observations is equal for numerator and denominator, taking the
+                # sum instead of the mean is sufficient as the 1/n cancels out.
+                prefix + "mean_norm_diff": self.results[prefix + "norm_diff"].mean(),
+                prefix + "norm_mean_diff": results_available[prefix + "diff"].sum() /
+                                           abs(results_available[prefix + "in"].sum()),
+                prefix + "mean_norm_abs_diff": self.results[prefix + "norm_abs_diff"].mean(),
+                prefix + "norm_mean_abs_diff": results_available[prefix + "abs_diff"].sum() /
+                                               abs(results_available[prefix + "in"].sum())
+            })
 
 
 class ComplexityEvaluator(BuildingsEvaluator):
@@ -816,8 +937,10 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
         self.area_volume_evaluator_2: AreaVolumeEvaluator | None = None
 
         self.final_columns = [col_name for lod in self.lods_short for col_name in [
-            f"area_{lod}_in", f"area_{lod}_out", f"area_diff_{lod}",
-            f"volume_{lod}_in", f"volume_{lod}_out", f"volume_diff_{lod}"
+            f"area_{lod}_in", f"area_{lod}_out", f"area_{lod}_diff", f"area_{lod}_abs_diff",
+            f"area_{lod}_norm_diff", f"area_{lod}_norm_abs_diff", f"area_{lod}_ratio",
+            f"volume_{lod}_in", f"volume_{lod}_out", f"volume_{lod}_diff", f"volume_{lod}_abs_diff",
+            f"volume_{lod}_norm_diff", f"volume_{lod}_norm_abs_diff", f"volume_{lod}_ratio"
         ]]
 
     def setup_area_volume_evaluators(self):
@@ -864,12 +987,19 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
 
         print("Computing differences in area and volume across all LODs ...")
         for lod in self.lods_short:
-            # todo: should maybe actually refer to AreaVolumeEvaluator.fme_output_attributes for field names ...
-            for field in ["area", "volume"]:
+            # For both the "area" and "volume" fields, compute the differences between input and output
+            for field in [
+                AreaVolumeEvaluator.fme_output_attributes[glb.fme_area_field_name],
+                AreaVolumeEvaluator.fme_output_attributes[glb.fme_volume_field_name]
+            ]:
                 metric_out = self.results_df[f"{field}_{lod}_out"]
                 metric_in = self.results_df[f"{field}_{lod}_in"]
 
-                self.results_df[f"{field}_diff_{lod}"] = metric_out - metric_in
+                self.results_df[f"{field}_{lod}_diff"] = metric_out - metric_in
+                self.results_df[f"{field}_{lod}_abs_diff"] = (metric_out - metric_in).abs()
+                self.results_df[f"{field}_{lod}_ratio"] = metric_out / metric_in
+                self.results_df[f"{field}_{lod}_norm_diff"] = (metric_out - metric_in) / metric_in
+                self.results_df[f"{field}_{lod}_norm_abs_diff"] = (metric_out - metric_in).abs() / metric_in
 
     @print_starting_message
     def run(self):
@@ -879,30 +1009,71 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
 
     def compute_summary_stats(self):
         self._summary_stats = {}
-        # Get the names of the area and volume columns as output by the AreaVolumeEvaluator for the respective FME
-        # attributes
-        area_field_name = AreaVolumeEvaluator.fme_output_attributes[glb.fme_area_field_name]
-        volume_field_name = AreaVolumeEvaluator.fme_output_attributes[glb.fme_volume_field_name]
-        for lod in self.lods:
-            lod = lod.replace(".", "")
-            area_prefix, area_diff_prefix = [f"{prefix}_{lod}_" for prefix in ["area", "area_diff"]]
-            vol_prefix, vol_diff_prefix = [f"{prefix}_{lod}_" for prefix in["volume", "volume_diff"]]
-            area_diff_col = self.results[f"{area_field_name}_diff_{lod}"]
-            vol_diff_col = self.results[f"{volume_field_name}_diff_{lod}"]
-            self._summary_stats.update({
-                area_prefix + "mean": self.results[f"{area_field_name}_{lod}_out"].mean(),
-                vol_prefix + "mean": self.results[f"{volume_field_name}_{lod}_out"].mean(),
-                area_diff_prefix + "mean": area_diff_col.mean(),
-                area_diff_prefix + "median": area_diff_col.median(),
-                area_diff_prefix + "mean_abs": area_diff_col.abs().mean(),
-                area_diff_prefix + "median_abs": area_diff_col.abs().median(),
-                area_diff_prefix + "rms": rms(area_diff_col),
-                vol_diff_prefix + "mean": vol_diff_col.mean(),
-                vol_diff_prefix + "median": vol_diff_col.median(),
-                vol_diff_prefix + "mean_abs": vol_diff_col.abs().mean(),
-                vol_diff_prefix + "median_abs": vol_diff_col.abs().median(),
-                vol_diff_prefix + "rms": rms(vol_diff_col)
-            })
+
+        for lod in self.lods_short:
+            # Get the names of the area and volume columns as output by the AreaVolumeEvaluator for the respective FME
+            # attributes
+            for field in [
+                AreaVolumeEvaluator.fme_output_attributes[glb.fme_area_field_name],
+                AreaVolumeEvaluator.fme_output_attributes[glb.fme_volume_field_name]
+            ]:
+                prefix = f"{field}_{lod}_"
+                diff_col = self.results[prefix + "diff"]
+
+                # Filter results for rows where both input and output areas or volumes are available (not NA), so that
+                # when calculating a metric based on the means of both columns, only the means of rows are taken into
+                # account that are available in both input and output. (That is, if a building is missing in the output,
+                # the area or volume of the input building should not be included in the input mean when it is compared
+                # in some way to the output mean. As a consequence, the computation can in many cases be done simply
+                # using the sum instead of the mean of either column, because the number of observations is equal due to
+                # this adjustment and therefore cancels out.)
+                # This is only necessary where column statistics are computed here. Results computed in
+                # self.run_area_volume_evaluators() can be used immediately, because they are NA in the respective locs.
+                results_available = self.results[
+                    ~self.results[prefix + "out"].isna() &
+                    ~self.results[prefix + "in"].isna()
+                ]
+
+                self._summary_stats.update({
+                    prefix + "in_mean": self.results[prefix + "in"].mean(),
+                    prefix + "out_mean": self.results[prefix + "out"].mean(),
+
+                    # Statistics of the actual differences or their absolute values
+                    prefix + "mean_diff": diff_col.mean(),
+                    prefix + "median_diff": diff_col.median(),
+                    prefix + "mean_abs_diff": diff_col.abs().mean(),
+                    prefix + "median_abs_diff": diff_col.abs().median(),
+                    prefix + "rms_diff": rms(diff_col),
+
+                    # Statistics of the ratios of input and output area or volume
+                    prefix + "mean_of_ratios":
+                        self.results[prefix + "ratio"].mean(),
+                    prefix + "ratio_of_means":
+                        results_available[prefix + "out"].sum() /
+                        results_available[prefix + "in"].sum(),
+
+                    # Mean of the normalized difference and normalized mean differences (w.r.t. input area or volume)
+                    prefix + "mean_norm_diff": self.results[prefix + "norm_diff"].mean(),
+                    prefix + "norm_mean_diff": results_available[prefix + "diff"].sum() /
+                                               results_available[prefix + "in"].sum(),
+
+                    # RMS of the normalized difference and normalized RMS differences (w.r.t. input area or volume)
+                    # todo: decide what to normalize on: mean? something else?
+                    prefix + "rms_norm_diff": rms(self.results[prefix + "norm_diff"]),
+                    prefix + "norm_rms_diff": rms(results_available[prefix + "diff"]) /
+                                              results_available[prefix + "in"].mean(),
+
+                    # Mean of the normalized absolute difference and normalized mean absolute difference
+                    prefix + "mean_norm_abs_diff": self.results[prefix + "norm_abs_diff"].mean(),
+                    prefix + "norm_mean_abs_diff": results_available[prefix + "abs_diff"].sum() /
+                                                   results_available[prefix + "in"].sum(),
+
+                    # RMS of the normalized absolute difference and normalized RMS absolute difference
+                    # todo: decide what to normalize on: mean? something else?
+                    prefix + "rms_norm_abs_diff": rms(self.results[prefix + "norm_abs_diff"]),
+                    prefix + "norm_rms_abs_diff": rms(results_available[prefix + "abs_diff"]) /
+                                                  results_available[prefix + "in"].mean()
+                })
 
 
 class FMEEvaluator(BuildingsEvaluator):
