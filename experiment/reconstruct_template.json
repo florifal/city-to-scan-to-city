@@ -204,16 +204,19 @@
           "NestedFlowchart.PC2MeshQuality-LoD12.mesh_error_f": "rms_lod12",
           "NestedFlowchart.PC2MeshQuality-LoD13.mesh_error_f": "rms_lod13",
           "NestedFlowchart.PC2MeshQuality-LoD22.mesh_error_f": "rms_lod22",
+          "NestedFlowchart.PolygonTriangulator-LoD12.volumes": "volume_lod12",
+          "NestedFlowchart.PolygonTriangulator-LoD13.volumes": "volume_lod13",
+          "NestedFlowchart.PolygonTriangulator-LoD22.volumes": "volume_lod22",
           "NestedFlowchart.SkipReplaceTester.roof_type": "roof_type",
           "NestedFlowchart.Validator-LoD12.errors": "val3dity_codes_lod12",
           "NestedFlowchart.Validator-LoD13.errors": "val3dity_codes_lod13",
           "NestedFlowchart.Validator-LoD22.errors": "val3dity_codes_lod22"
         },
-        "prettyPrint": false
+        "prettyPrint": true
       },
       "position": [
-        1806.0,
-        364.0
+        1817.0,
+        410.0
       ],
       "type": [
         "CoreIO",
@@ -224,8 +227,8 @@
       "connections": {
         "ground_elevations": [
           [
-            "NestedFlowchart",
-            "ArrExtruder-LoD13.floor_elevation"
+            "CityJSONWriter",
+            "attributes"
           ],
           [
             "NestedFlowchart",
@@ -233,15 +236,15 @@
           ],
           [
             "NestedFlowchart",
+            "ArrExtruder-LoD22.floor_elevation"
+          ],
+          [
+            "NestedFlowchart",
             "ArrExtruder-LoD12.floor_elevation"
           ],
           [
             "NestedFlowchart",
-            "ArrExtruder-LoD22.floor_elevation"
-          ],
-          [
-            "CityJSONWriter",
-            "attributes"
+            "ArrExtruder-LoD13.floor_elevation"
           ]
         ],
         "point_clouds": [
@@ -289,39 +292,45 @@
       "connections": {
         "ArrDissolve-LoD12.global_elevation_50p": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
         "ArrDissolve-LoD12.global_elevation_70p": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
         "ArrDissolve-LoD12.global_elevation_max": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
         "ArrDissolve-LoD12.global_elevation_min": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
+          [
+            "OGRWriter-LoD11",
+            "attributes"
+          ]
+        ],
+        "DataCoverageCalc.data_coverage": [
           [
             "CityJSONWriter",
             "attributes"
@@ -343,6 +352,12 @@
           [
             "CityJSONWriter",
             "geometry_lod22"
+          ]
+        ],
+        "NestedFlowchart.timings": [
+          [
+            "CityJSONWriter",
+            "attributes"
           ]
         ],
         "PC2MeshQuality-LoD11.error_hist": [
@@ -371,12 +386,18 @@
         ],
         "PolygonTriangulator-LoD12.multi_triangle_collections": [
           [
-            "OGRWriter-LoD12-3D",
-            "geometries"
-          ],
-          [
             "OBJVecWriter-LoD12",
             "triangles"
+          ],
+          [
+            "OGRWriter-LoD12-3D",
+            "geometries"
+          ]
+        ],
+        "PolygonTriangulator-LoD12.volumes": [
+          [
+            "CityJSONWriter",
+            "attributes"
           ]
         ],
         "PolygonTriangulator-LoD13.multi_triangle_collections": [
@@ -389,6 +410,12 @@
             "triangles"
           ]
         ],
+        "PolygonTriangulator-LoD13.volumes": [
+          [
+            "CityJSONWriter",
+            "attributes"
+          ]
+        ],
         "PolygonTriangulator-LoD22.multi_triangle_collections": [
           [
             "OGRWriter-LoD22-3D",
@@ -399,7 +426,17 @@
             "triangles"
           ]
         ],
+        "PolygonTriangulator-LoD22.volumes": [
+          [
+            "CityJSONWriter",
+            "attributes"
+          ]
+        ],
         "SegmentRasterise.data_area": [
+          [
+            "CityJSONWriter",
+            "attributes"
+          ],
           [
             "OGRWriter-LoD11",
             "attributes"
@@ -407,31 +444,31 @@
         ],
         "SkipReplaceTester.replace": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
         "SkipReplaceTester.roof_type": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
         "SkipReplaceTester.skip": [
           [
-            "OGRWriter-LoD11",
+            "CityJSONWriter",
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD11",
             "attributes"
           ]
         ],
@@ -510,8 +547,11 @@
         "PC2MeshQuality-LoD22.mesh_error_f": false,
         "PolygonTriangulator-LoD11.multi_triangle_collections": false,
         "PolygonTriangulator-LoD12.multi_triangle_collections": false,
+        "PolygonTriangulator-LoD12.volumes": false,
         "PolygonTriangulator-LoD13.multi_triangle_collections": false,
+        "PolygonTriangulator-LoD13.volumes": false,
         "PolygonTriangulator-LoD22.multi_triangle_collections": false,
+        "PolygonTriangulator-LoD22.volumes": false,
         "SegmentRasterise.data_area": false,
         "SkipReplaceTester.replace": false,
         "SkipReplaceTester.roof_type": false,
@@ -548,8 +588,8 @@
         "precision": 5
       },
       "position": [
-        1505.0,
-        -13.0
+        1498.0,
+        637.0
       ],
       "type": [
         "CoreIO",
@@ -569,8 +609,8 @@
         "precision": 5
       },
       "position": [
-        1491.0,
-        262.0
+        1670.0,
+        636.0
       ],
       "type": [
         "CoreIO",
@@ -590,8 +630,8 @@
         "precision": 5
       },
       "position": [
-        1555.0,
-        484.0
+        1836.0,
+        635.0
       ],
       "type": [
         "CoreIO",
@@ -601,6 +641,26 @@
     "OGRLoader": {
       "connections": {
         "attributes": [
+          [
+            "CityJSONWriter",
+            "attributes"
+          ],
+          [
+            "NestedFlowchart",
+            "Arr2LinearRings-LoD12.attributes"
+          ],
+          [
+            "NestedFlowchart",
+            "Arr2LinearRings-LoD22.attributes"
+          ],
+          [
+            "NestedFlowchart",
+            "AttrRingsSelector-LoD22.attributes_A"
+          ],
+          [
+            "NestedFlowchart",
+            "AttributeTester.attributes"
+          ],
           [
             "NestedFlowchart",
             "AttrRingsSelector-LoD12.attributes_A"
@@ -614,30 +674,6 @@
             "Arr2LinearRings-LoD13.attributes"
           ],
           [
-            "NestedFlowchart",
-            "AttrRingsSelector-LoD22.attributes_A"
-          ],
-          [
-            "NestedFlowchart",
-            "AttributeTester.attributes"
-          ],
-          [
-            "NestedFlowchart",
-            "Arr2LinearRings-LoD12.attributes"
-          ],
-          [
-            "NestedFlowchart",
-            "Arr2LinearRings-LoD22.attributes"
-          ],
-          [
-            "OBJVecWriter-LoD22",
-            "attributes"
-          ],
-          [
-            "OBJVecWriter-LoD13",
-            "attributes"
-          ],
-          [
             "OBJVecWriter-LoD12",
             "attributes"
           ],
@@ -646,7 +682,11 @@
             "attributes"
           ],
           [
-            "OGRWriter-LoD22-3D",
+            "OBJVecWriter-LoD13",
+            "attributes"
+          ],
+          [
+            "OBJVecWriter-LoD22",
             "attributes"
           ],
           [
@@ -658,15 +698,11 @@
             "attributes"
           ],
           [
-            "CityJSONWriter",
+            "OGRWriter-LoD22-3D",
             "attributes"
           ]
         ],
         "linear_rings": [
-          [
-            "OGRWriter-LoD11",
-            "geometries"
-          ],
           [
             "CityJSONWriter",
             "footprints"
@@ -674,6 +710,10 @@
           [
             "PolygonSimplifyGEOS",
             "polygons"
+          ],
+          [
+            "OGRWriter-LoD11",
+            "geometries"
           ]
         ]
       },
@@ -722,8 +762,36 @@
         "transaction_batch_size_": 1000
       },
       "position": [
-        1799.0,
-        -255.0
+        1819.0,
+        -267.0
+      ],
+      "type": [
+        "io-gdal",
+        "OGRWriter"
+      ]
+    },
+    "OGRWriter-LoD12": {
+      "marked_inputs": {
+        "attributes": false,
+        "geometries": false
+      },
+      "parameters": {
+        "CRS": "{{output_crs_wkt}}",
+        "create_directories": true,
+        "do_transactions": false,
+        "filepath": "{{output_ogr}}",
+        "gdaldriver": "{{output_ogr_format}}",
+        "layername": "LoD12",
+        "only_output_mapped_attrs": false,
+        "output_attribute_names": {},
+        "overwrite_file": "{{output_ogr_overwrite}}",
+        "overwrite_layer": false,
+        "require_attributes": true,
+        "transaction_batch_size_": 1000
+      },
+      "position": [
+        1818.0,
+        -149.5
       ],
       "type": [
         "io-gdal",
@@ -750,8 +818,36 @@
         "transaction_batch_size_": 1000
       },
       "position": [
-        1811.5,
-        86.5
+        1822.5,
+        137.5
+      ],
+      "type": [
+        "io-gdal",
+        "OGRWriter"
+      ]
+    },
+    "OGRWriter-LoD13": {
+      "marked_inputs": {
+        "attributes": false,
+        "geometries": false
+      },
+      "parameters": {
+        "CRS": "{{output_crs_wkt}}",
+        "create_directories": true,
+        "do_transactions": false,
+        "filepath": "{{output_ogr}}",
+        "gdaldriver": "{{output_ogr_format}}",
+        "layername": "LoD13",
+        "only_output_mapped_attrs": false,
+        "output_attribute_names": {},
+        "overwrite_file": "{{output_ogr_overwrite}}",
+        "overwrite_layer": false,
+        "require_attributes": true,
+        "transaction_batch_size_": 1000
+      },
+      "position": [
+        1813.0,
+        -69.5
       ],
       "type": [
         "io-gdal",
@@ -778,8 +874,36 @@
         "transaction_batch_size_": 1000
       },
       "position": [
-        1812.5,
-        168.5
+        1823.5,
+        214.5
+      ],
+      "type": [
+        "io-gdal",
+        "OGRWriter"
+      ]
+    },
+    "OGRWriter-LoD22": {
+      "marked_inputs": {
+        "attributes": false,
+        "geometries": false
+      },
+      "parameters": {
+        "CRS": "{{output_crs_wkt}}",
+        "create_directories": true,
+        "do_transactions": false,
+        "filepath": "{{output_ogr}}",
+        "gdaldriver": "{{output_ogr_format}}",
+        "layername": "LoD22",
+        "only_output_mapped_attrs": false,
+        "output_attribute_names": {},
+        "overwrite_file": "{{output_ogr_overwrite}}",
+        "overwrite_layer": false,
+        "require_attributes": true,
+        "transaction_batch_size_": 1000
+      },
+      "position": [
+        1814.0,
+        9.5
       ],
       "type": [
         "io-gdal",
@@ -806,8 +930,8 @@
         "transaction_batch_size_": 1000
       },
       "position": [
-        1810.5,
-        248.5
+        1821.5,
+        294.5
       ],
       "type": [
         "io-gdal",
@@ -845,8 +969,12 @@
       "connections": {
         "simplified_polygons": [
           [
-            "NestedFlowchart",
-            "LOD1Extruder-LoD11.polygon"
+            "LASInPolygons",
+            "polygons"
+          ],
+          [
+            "PolygonBufferGEOS",
+            "polygons"
           ],
           [
             "NestedFlowchart",
@@ -854,11 +982,15 @@
           ],
           [
             "NestedFlowchart",
-            "AttrRingsSelector-LoD12.linear_rings_A"
+            "DataCoverageCalc.footprint_polygon"
           ],
           [
             "NestedFlowchart",
-            "AttrRingsSelector-LoD22.linear_rings_A"
+            "LOD1Extruder-LoD11.polygon"
+          ],
+          [
+            "NestedFlowchart",
+            "AttrRingsSelector-LoD12.linear_rings_A"
           ],
           [
             "NestedFlowchart",
@@ -866,15 +998,7 @@
           ],
           [
             "NestedFlowchart",
-            "DataCoverageCalc.footprint_polygon"
-          ],
-          [
-            "LASInPolygons",
-            "polygons"
-          ],
-          [
-            "PolygonBufferGEOS",
-            "polygons"
+            "AttrRingsSelector-LoD22.linear_rings_A"
           ]
         ]
       },
