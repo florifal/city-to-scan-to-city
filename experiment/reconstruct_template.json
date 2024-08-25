@@ -10,6 +10,11 @@
       "str",
       "egid"
     ],
+    "clip_ground": [
+      "clip parts from the input footprint wherever patches of ground points are detected",
+      "bool",
+      true
+    ],
     "input_footprint": [
       "Input 2D vector file with building footprint(s)",
       "str",
@@ -169,6 +174,36 @@
       "name of boolean attribute in input footprints that tells if the building should be skipped for full LoD1.3+ reconstruction. Eg used for greenhouses and very big industrial buildings, since these are difficult/slow to process due to glass roofs and large footprint area.",
       "str",
       "skip"
+    ],
+    "skip_lod12": [
+      "Skip LoD12 reconstruction",
+      "bool",
+      false
+    ],
+    "skip_lod13": [
+      "Skip LoD13 reconstruction",
+      "bool",
+      false
+    ],
+    "skip_lod22": [
+      "Skip LoD22 reconstruction",
+      "bool",
+      false
+    ],
+    "thres_alpha": [
+      "distance used in computing alpha-shape of detected plane segments prior to line detection",
+      "float",
+      0.25
+    ],
+    "thres_reg_line_dist": [
+      "maximum distance to merge lines during line regularisation (after line detection)",
+      "float",
+      0.4000000059604645
+    ],
+    "thres_reg_line_ext": [
+      "extension of regularised lines prior to optimisation",
+      "float",
+      1.399999976158142
     ]
   },
   "nodes": {
@@ -236,7 +271,7 @@
           ],
           [
             "NestedFlowchart",
-            "ArrExtruder-LoD22.floor_elevation"
+            "ArrExtruder-LoD13.floor_elevation"
           ],
           [
             "NestedFlowchart",
@@ -244,7 +279,7 @@
           ],
           [
             "NestedFlowchart",
-            "ArrExtruder-LoD13.floor_elevation"
+            "ArrExtruder-LoD22.floor_elevation"
           ]
         ],
         "point_clouds": [
@@ -386,12 +421,12 @@
         ],
         "PolygonTriangulator-LoD12.multi_triangle_collections": [
           [
-            "OBJVecWriter-LoD12",
-            "triangles"
-          ],
-          [
             "OGRWriter-LoD12-3D",
             "geometries"
+          ],
+          [
+            "OBJVecWriter-LoD12",
+            "triangles"
           ]
         ],
         "PolygonTriangulator-LoD12.volumes": [
@@ -402,12 +437,12 @@
         ],
         "PolygonTriangulator-LoD13.multi_triangle_collections": [
           [
-            "OGRWriter-LoD13-3D",
-            "geometries"
-          ],
-          [
             "OBJVecWriter-LoD13",
             "triangles"
+          ],
+          [
+            "OGRWriter-LoD13-3D",
+            "geometries"
           ]
         ],
         "PolygonTriangulator-LoD13.volumes": [
@@ -647,11 +682,7 @@
           ],
           [
             "NestedFlowchart",
-            "Arr2LinearRings-LoD12.attributes"
-          ],
-          [
-            "NestedFlowchart",
-            "Arr2LinearRings-LoD22.attributes"
+            "AttributeTester.attributes"
           ],
           [
             "NestedFlowchart",
@@ -659,7 +690,7 @@
           ],
           [
             "NestedFlowchart",
-            "AttributeTester.attributes"
+            "Arr2LinearRings-LoD22.attributes"
           ],
           [
             "NestedFlowchart",
@@ -667,26 +698,22 @@
           ],
           [
             "NestedFlowchart",
-            "AttrRingsSelector-LoD13.attributes_A"
-          ],
-          [
-            "NestedFlowchart",
             "Arr2LinearRings-LoD13.attributes"
           ],
           [
-            "OBJVecWriter-LoD12",
-            "attributes"
+            "NestedFlowchart",
+            "Arr2LinearRings-LoD12.attributes"
           ],
           [
-            "OGRWriter-LoD11",
-            "attributes"
-          ],
-          [
-            "OBJVecWriter-LoD13",
-            "attributes"
+            "NestedFlowchart",
+            "AttrRingsSelector-LoD13.attributes_A"
           ],
           [
             "OBJVecWriter-LoD22",
+            "attributes"
+          ],
+          [
+            "OBJVecWriter-LoD12",
             "attributes"
           ],
           [
@@ -700,20 +727,28 @@
           [
             "OGRWriter-LoD22-3D",
             "attributes"
+          ],
+          [
+            "OBJVecWriter-LoD13",
+            "attributes"
+          ],
+          [
+            "OGRWriter-LoD11",
+            "attributes"
           ]
         ],
         "linear_rings": [
           [
-            "CityJSONWriter",
-            "footprints"
+            "OGRWriter-LoD11",
+            "geometries"
           ],
           [
             "PolygonSimplifyGEOS",
             "polygons"
           ],
           [
-            "OGRWriter-LoD11",
-            "geometries"
+            "CityJSONWriter",
+            "footprints"
           ]
         ]
       },
@@ -969,20 +1004,20 @@
       "connections": {
         "simplified_polygons": [
           [
-            "LASInPolygons",
-            "polygons"
-          ],
-          [
-            "PolygonBufferGEOS",
-            "polygons"
-          ],
-          [
             "NestedFlowchart",
             "AttrRingsSelector-LoD13.linear_rings_A"
           ],
           [
             "NestedFlowchart",
+            "AttrRingsSelector-LoD22.linear_rings_A"
+          ],
+          [
+            "NestedFlowchart",
             "DataCoverageCalc.footprint_polygon"
+          ],
+          [
+            "NestedFlowchart",
+            "BuildArrFromLines.footprint"
           ],
           [
             "NestedFlowchart",
@@ -993,12 +1028,12 @@
             "AttrRingsSelector-LoD12.linear_rings_A"
           ],
           [
-            "NestedFlowchart",
-            "BuildArrFromLines.footprint"
+            "PolygonBufferGEOS",
+            "polygons"
           ],
           [
-            "NestedFlowchart",
-            "AttrRingsSelector-LoD22.linear_rings_A"
+            "LASInPolygons",
+            "polygons"
           ]
         ]
       },

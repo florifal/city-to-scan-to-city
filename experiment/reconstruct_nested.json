@@ -5,6 +5,11 @@
       "str",
       "fid"
     ],
+    "clip_ground": [
+      "clip parts from the input footprint wherever patches of ground points are detected",
+      "bool",
+      true
+    ],
     "input_footprint": [
       "Input 2D vector file with building footprint(s)",
       "str",
@@ -169,6 +174,21 @@
       "Skip LoD22 reconstruction",
       "bool",
       false
+    ],
+    "thres_alpha": [
+      "distance used in computing alpha-shape of detected plane segments prior to line detection",
+      "float",
+      0.25
+    ],
+    "thres_reg_line_dist": [
+      "maximum distance to merge lines during line regularisation (after line detection)",
+      "float",
+      0.4000000059604645
+    ],
+    "thres_reg_line_ext": [
+      "extension of regularised lines prior to optimisation",
+      "float",
+      1.399999976158142
     ]
   },
   "nodes": {
@@ -180,11 +200,11 @@
             "edge_points"
           ],
           [
-            "SegmentRasterise",
+            "SkipReplaceTester",
             "alpha_rings"
           ],
           [
-            "SkipReplaceTester",
+            "SegmentRasterise",
             "alpha_rings"
           ]
         ],
@@ -222,7 +242,7 @@
         "extract_polygons": true,
         "optimal_alpha": false,
         "optimal_only_if_needed": true,
-        "thres_alpha": 0.3499999940395355
+        "thres_alpha": "{{thres_alpha}}"
       },
       "position": [
         1265.1005859375,
@@ -382,11 +402,11 @@
       "connections": {
         "arrangement": [
           [
-            "Arr2LinearRings-LoD12",
+            "ArrExtruder-LoD12",
             "arrangement"
           ],
           [
-            "ArrExtruder-LoD12",
+            "Arr2LinearRings-LoD12",
             "arrangement"
           ]
         ]
@@ -399,6 +419,7 @@
         "arrangement": false,
         "global_elevation_50p": true,
         "global_elevation_70p": true,
+        "global_elevation_97p": false,
         "global_elevation_max": true,
         "global_elevation_min": true
       },
@@ -423,11 +444,11 @@
       "connections": {
         "arrangement": [
           [
-            "Arr2LinearRings-LoD13",
+            "ArrExtruder-LoD13",
             "arrangement"
           ],
           [
-            "ArrExtruder-LoD13",
+            "Arr2LinearRings-LoD13",
             "arrangement"
           ]
         ]
@@ -440,6 +461,7 @@
         "arrangement": false,
         "global_elevation_50p": false,
         "global_elevation_70p": false,
+        "global_elevation_97p": false,
         "global_elevation_max": false,
         "global_elevation_min": false
       },
@@ -464,11 +486,11 @@
       "connections": {
         "arrangement": [
           [
-            "Arr2LinearRings-LoD22",
+            "ArrExtruder-LoD22",
             "arrangement"
           ],
           [
-            "ArrExtruder-LoD22",
+            "Arr2LinearRings-LoD22",
             "arrangement"
           ]
         ]
@@ -481,6 +503,7 @@
         "arrangement": false,
         "global_elevation_50p": false,
         "global_elevation_70p": false,
+        "global_elevation_97p": false,
         "global_elevation_max": false,
         "global_elevation_min": false
       },
@@ -525,6 +548,7 @@
         "do_floor": true,
         "do_roofs": true,
         "do_walls": true,
+        "lod1_extrude_to_max": false,
         "snap_tolerance_exp": 4
       },
       "position": [
@@ -560,6 +584,7 @@
         "do_floor": true,
         "do_roofs": true,
         "do_walls": true,
+        "lod1_extrude_to_max": false,
         "snap_tolerance_exp": 4
       },
       "position": [
@@ -595,6 +620,7 @@
         "do_floor": true,
         "do_roofs": true,
         "do_walls": true,
+        "lod1_extrude_to_max": false,
         "snap_tolerance_exp": 4
       },
       "position": [
@@ -676,15 +702,15 @@
       "connections": {
         "result": [
           [
+            "SkipReplaceTester",
+            "skip"
+          ],
+          [
             "AlphaShape",
             "skip"
           ],
           [
             "AlphaShape-ground",
-            "skip"
-          ],
-          [
-            "SkipReplaceTester",
             "skip"
           ]
         ]
@@ -810,15 +836,11 @@
         ],
         "pts_per_roofplane": [
           [
-            "AlphaShape",
-            "pts_per_roofplane"
+            "PC2MeshQuality-LoD13",
+            "ipoints"
           ],
           [
             "DetectLines",
-            "pts_per_roofplane"
-          ],
-          [
-            "OptimiseArrangmentGrid",
             "pts_per_roofplane"
           ],
           [
@@ -826,11 +848,11 @@
             "ipoints"
           ],
           [
-            "PC2MeshQuality-LoD12",
-            "ipoints"
+            "OptimiseArrangmentGrid",
+            "pts_per_roofplane"
           ],
           [
-            "PC2MeshQuality-LoD13",
+            "PC2MeshQuality-LoD12",
             "ipoints"
           ],
           [
@@ -843,6 +865,10 @@
           ],
           [
             "SegmentRasterise",
+            "pts_per_roofplane"
+          ],
+          [
+            "AlphaShape",
             "pts_per_roofplane"
           ]
         ],
@@ -858,16 +884,16 @@
         ],
         "roof_elevation_70p": [
           [
+            "LOD1Extruder-LoD11",
+            "roof_elevation"
+          ],
+          [
             "AttrRingsSelector-LoD12",
             "attributes_A"
           ],
           [
             "AttrRingsSelector-LoD13",
             "attributes_A"
-          ],
-          [
-            "LOD1Extruder-LoD11",
-            "roof_elevation"
           ]
         ],
         "roof_elevation_max": [
@@ -898,15 +924,15 @@
         ],
         "total_roofplane_cnt": [
           [
+            "Arr2LinearRings-LoD22",
+            "attributes"
+          ],
+          [
             "Arr2LinearRings-LoD12",
             "attributes"
           ],
           [
             "Arr2LinearRings-LoD13",
-            "attributes"
-          ],
-          [
-            "Arr2LinearRings-LoD22",
             "attributes"
           ],
           [
@@ -928,63 +954,6 @@
         "is_wall": false,
         "plane_adj": false,
         "plane_id": false,
-        "planes": false,
-        "pts_per_roofplane": false,
-        "roof_elevation_50p": false,
-        "roof_elevation_70p": false,
-        "roof_elevation_max": false,
-        "roof_elevation_min": false,
-        "roof_pt_cnt": true,
-        "roof_type": false,
-        "slant_roofplane_cnt": false,
-        "total_roofplane_cnt": true,
-        "unsegmented_pt_cnt": true,
-        "wall_pt_cnt": true
-      },
-      "parameters": {
-        "horiz_min_count": 0.949999988079071,
-        "metrics_is_horizontal_threshold": 0.9700000286102295,
-        "metrics_is_wall_threshold": 0.30000001192092896,
-        "metrics_normal_k": "{{r_normal_k}}",
-        "metrics_plane_epsilon": "{{r_plane_epsilon}}",
-        "metrics_plane_k": "{{r_plane_k}}",
-        "metrics_plane_min_points": "{{r_plane_min_points}}",
-        "metrics_plane_normal_threshold": "{{r_plane_normal_angle}}",
-        "n_refit": 5,
-        "only_horizontal": false
-      },
-      "position": [
-        915.0,
-        137.79998779296875
-      ],
-      "type": [
-        "building-reconstruction",
-        "DetectPlanes"
-      ]
-    },
-    "DetectPlanes-ground": {
-      "connections": {
-        "pts_per_roofplane": [
-          [
-            "AlphaShape-ground",
-            "pts_per_roofplane"
-          ],
-          [
-            "OptimiseArrangmentGrid",
-            "ground_pts_per_roofplane"
-          ]
-        ]
-      },
-      "marked_inputs": {
-        "points": false
-      },
-      "marked_outputs": {
-        "horiz_roofplane_cnt": false,
-        "is_horizontal": false,
-        "is_wall": false,
-        "plane_adj": false,
-        "plane_id": false,
-        "planes": false,
         "pts_per_roofplane": false,
         "roof_elevation_50p": false,
         "roof_elevation_70p": false,
@@ -999,6 +968,9 @@
       },
       "parameters": {
         "horiz_min_count": 0.949999988079071,
+        "maximum_angle": 25.0,
+        "maximum_offset": 0.5,
+        "metrics_cluster_epsilon_ransac": 0.30000001192092896,
         "metrics_is_horizontal_threshold": 0.9700000286102295,
         "metrics_is_wall_threshold": 0.30000001192092896,
         "metrics_normal_k": "{{r_normal_k}}",
@@ -1006,8 +978,76 @@
         "metrics_plane_k": "{{r_plane_k}}",
         "metrics_plane_min_points": "{{r_plane_min_points}}",
         "metrics_plane_normal_threshold": "{{r_plane_normal_angle}}",
+        "metrics_probability_ransac": 0.05000000074505806,
+        "n_refit": 5,
+        "regularize_axis_symmetry": false,
+        "regularize_coplanarity": false,
+        "regularize_orthogonality": false,
+        "regularize_parallelism": false,
+        "use_ransac": false
+      },
+      "position": [
+        915.0,
+        137.79998779296875
+      ],
+      "type": [
+        "building-reconstruction",
+        "DetectPlanes"
+      ]
+    },
+    "DetectPlanes-ground": {
+      "connections": {
+        "pts_per_roofplane": [
+          [
+            "OptimiseArrangmentGrid",
+            "ground_pts_per_roofplane"
+          ],
+          [
+            "AlphaShape-ground",
+            "pts_per_roofplane"
+          ]
+        ]
+      },
+      "marked_inputs": {
+        "points": false
+      },
+      "marked_outputs": {
+        "horiz_roofplane_cnt": false,
+        "is_horizontal": false,
+        "is_wall": false,
+        "plane_adj": false,
+        "plane_id": false,
+        "pts_per_roofplane": false,
+        "roof_elevation_50p": false,
+        "roof_elevation_70p": false,
+        "roof_elevation_max": false,
+        "roof_elevation_min": false,
+        "roof_pt_cnt": false,
+        "roof_type": false,
+        "slant_roofplane_cnt": false,
+        "total_roofplane_cnt": false,
+        "unsegmented_pt_cnt": false,
+        "wall_pt_cnt": false
+      },
+      "parameters": {
+        "horiz_min_count": 0.949999988079071,
+        "maximum_angle": 25.0,
+        "maximum_offset": 0.5,
+        "metrics_cluster_epsilon_ransac": 0.30000001192092896,
+        "metrics_is_horizontal_threshold": 0.9700000286102295,
+        "metrics_is_wall_threshold": 0.30000001192092896,
+        "metrics_normal_k": "{{r_normal_k}}",
+        "metrics_plane_epsilon": "{{r_plane_epsilon}}",
+        "metrics_plane_k": "{{r_plane_k}}",
+        "metrics_plane_min_points": "{{r_plane_min_points}}",
+        "metrics_plane_normal_threshold": "{{r_plane_normal_angle}}",
+        "metrics_probability_ransac": 0.05000000074505806,
         "n_refit": 10,
-        "only_horizontal": true
+        "regularize_axis_symmetry": false,
+        "regularize_coplanarity": false,
+        "regularize_orthogonality": false,
+        "regularize_parallelism": false,
+        "use_ransac": false
       },
       "position": [
         918.0,
@@ -1115,20 +1155,20 @@
       "connections": {
         "mesh": [
           [
-            "FacesSelector-LoD12",
-            "faces_A"
+            "PolygonTriangulator-LoD11",
+            "polygons"
           ],
           [
             "FacesSelector-LoD13",
             "faces_A"
           ],
           [
-            "FacesSelector-LoD22",
+            "FacesSelector-LoD12",
             "faces_A"
           ],
           [
-            "PolygonTriangulator-LoD11",
-            "polygons"
+            "FacesSelector-LoD22",
+            "faces_A"
           ]
         ]
       },
@@ -1155,22 +1195,22 @@
       "connections": {
         "arrangement": [
           [
+            "ArrDissolve-LoD22",
+            "arrangement"
+          ],
+          [
             "ArrDissolve-LoD12",
             "arrangement"
           ],
           [
             "ArrDissolve-LoD13",
             "arrangement"
-          ],
-          [
-            "ArrDissolve-LoD22",
-            "arrangement"
           ]
         ],
         "groundparts": [
           [
-            "Arr2LinearRings-LoD12",
-            "groundparts"
+            "DataCoverageCalc",
+            "ground_parts"
           ],
           [
             "Arr2LinearRings-LoD13",
@@ -1181,8 +1221,8 @@
             "groundparts"
           ],
           [
-            "DataCoverageCalc",
-            "ground_parts"
+            "Arr2LinearRings-LoD12",
+            "groundparts"
           ]
         ]
       },
@@ -1204,7 +1244,7 @@
         "n_iterations": 1,
         "preset_labels": false,
         "smoothness_multiplier": 1.0,
-        "use_ground": true,
+        "use_ground": "{{clip_ground}}",
         "z_percentile": 0.8999999761581421
       },
       "position": [
@@ -1403,11 +1443,13 @@
         "multi_triangle_collections": true,
         "normals": false,
         "ring_ids": false,
-        "triangles": false
+        "triangles": false,
+        "volumes": false
       },
       "parameters": {
         "dupe_threshold_exp": 4,
-        "output_all_triangles": false
+        "output_all_triangles": false,
+        "output_mtc_for_every_input": false
       },
       "position": [
         2801.0,
@@ -1445,7 +1487,8 @@
       },
       "parameters": {
         "dupe_threshold_exp": 4,
-        "output_all_triangles": false
+        "output_all_triangles": false,
+        "output_mtc_for_every_input": false
       },
       "position": [
         3545.0,
@@ -1483,7 +1526,8 @@
       },
       "parameters": {
         "dupe_threshold_exp": 4,
-        "output_all_triangles": false
+        "output_all_triangles": false,
+        "output_mtc_for_every_input": false
       },
       "position": [
         3537.1728515625,
@@ -1521,7 +1565,8 @@
       },
       "parameters": {
         "dupe_threshold_exp": 4,
-        "output_all_triangles": false
+        "output_all_triangles": false,
+        "output_mtc_for_every_input": false
       },
       "position": [
         3528.1728515625,
@@ -1557,8 +1602,8 @@
       },
       "parameters": {
         "angle_threshold": 0.15000000596046448,
-        "dist_threshold": 0.4000000059604645,
-        "extension": 1.399999976158142,
+        "dist_threshold": "{{thres_reg_line_dist}}",
+        "extension": "{{thres_reg_line_ext}}",
         "merge_intersection_lines": false
       },
       "position": [
@@ -1580,7 +1625,7 @@
         ],
         "heightfield": [
           [
-            "ArrDissolve-LoD12",
+            "OptimiseArrangmentGrid",
             "heightfield"
           ],
           [
@@ -1592,7 +1637,7 @@
             "heightfield"
           ],
           [
-            "OptimiseArrangmentGrid",
+            "ArrDissolve-LoD12",
             "heightfield"
           ]
         ]
@@ -1630,18 +1675,6 @@
       "connections": {
         "replace": [
           [
-            "AttrRingsSelector-LoD12",
-            "replace"
-          ],
-          [
-            "AttrRingsSelector-LoD13",
-            "replace"
-          ],
-          [
-            "AttrRingsSelector-LoD22",
-            "replace"
-          ],
-          [
             "FacesSelector-LoD12",
             "replace"
           ],
@@ -1652,19 +1685,31 @@
           [
             "FacesSelector-LoD22",
             "replace"
+          ],
+          [
+            "AttrRingsSelector-LoD22",
+            "replace"
+          ],
+          [
+            "AttrRingsSelector-LoD12",
+            "replace"
+          ],
+          [
+            "AttrRingsSelector-LoD13",
+            "replace"
           ]
         ],
         "roof_type": [
+          [
+            "Arr2LinearRings-LoD22",
+            "attributes"
+          ],
           [
             "Arr2LinearRings-LoD12",
             "attributes"
           ],
           [
             "Arr2LinearRings-LoD13",
-            "attributes"
-          ],
-          [
-            "Arr2LinearRings-LoD22",
             "attributes"
           ],
           [
@@ -1678,15 +1723,11 @@
         ],
         "skip": [
           [
-            "AttrRingsSelector-LoD12",
+            "FacesSelector-LoD13",
             "skip"
           ],
           [
-            "AttrRingsSelector-LoD13",
-            "skip"
-          ],
-          [
-            "AttrRingsSelector-LoD22",
+            "FacesSelector-LoD22",
             "skip"
           ],
           [
@@ -1694,11 +1735,15 @@
             "skip"
           ],
           [
-            "FacesSelector-LoD13",
+            "AttrRingsSelector-LoD22",
             "skip"
           ],
           [
-            "FacesSelector-LoD22",
+            "AttrRingsSelector-LoD12",
+            "skip"
+          ],
+          [
+            "AttrRingsSelector-LoD13",
             "skip"
           ]
         ]
