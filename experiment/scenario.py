@@ -282,7 +282,7 @@ class SurveyExecutor:
             time.sleep(1)
             print(f"\rSurvey simulation running. Time elapsed: {int(time.time() - time_start)} s", end="")
 
-        print(f"\nSurvey simulation has finished after {datetime.timedelta(seconds=int(time.time() - time_start))}.")
+        print(f"\nSurvey simulation has finished after {timedelta(seconds=int(time.time() - time_start))}.")
 
         sim_output = self.sim_build.join()
         self.output_cloud_filepaths = [str(Path(p)) for p in sim_output.filepaths]
