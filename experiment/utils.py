@@ -72,6 +72,10 @@ def point_spacing_across(altitude: float, scan_angle_deg: float, pulse_freq_hz: 
     return 2 * altitude * np.tan(scan_angle_deg * np.pi / 180) * scan_freq_hz / pulse_freq_hz
 
 
+def swath_width(altitude: int, scan_angle_deg: int) -> int:
+    return int(0.5 + 2 * altitude * np.tan(scan_angle_deg/180*np.pi))  # int() cuts off decimal places, thus +0.5
+
+
 def rms(x: list | np.ndarray | pd.Series):
     return np.sqrt(np.mean(np.square(x)))
 
@@ -123,7 +127,7 @@ def describe_value_counts(series: list | np.ndarray | pd.Series):
     if not isinstance(series, pd.Series):
         series = pd.Series(series)
 
-    vc = series.value_counts()
+    vc: pd.Series = series.value_counts()
     return {
         "num_total": len(series),
         "num_unique": series.nunique(),
