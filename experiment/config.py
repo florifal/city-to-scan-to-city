@@ -55,7 +55,7 @@ def scenario_default_config():
     }
 
     survey_generator_config = {
-        "survey_template_xml_filepath": str(Path(__file__).parent / "experiment" / "survey_template.xml"),
+        "survey_template_xml_filepath": str(glb.helios_survey_template_filepath),
         "survey_name": "",
         "scene_xml_filepath_with_id": "",
         "platform_id": "sr22",
