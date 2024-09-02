@@ -17,7 +17,7 @@ from math import floor, isclose
 from experiment.config import deep_update, update_config_item, get_config_item
 from experiment.scene_part import ScenePartOBJ, ScenePartTIFF
 from experiment.utils import execute_subprocess, crs_url_from_epsg, get_last_line_from_file, point_spacing_along, \
-    point_spacing_across, is_numeric
+    point_spacing_across, is_numeric, deep_replace_in_string_values
 from experiment.xml_generator import SceneGenerator, FlightPathGenerator, SurveyGenerator, parse_xml_with_comments
 from experiment.evaluator import *
 
@@ -598,6 +598,7 @@ class ReconstructionOptimization:
             dirpath=experiment_dirpath,
             default_config=self.optim_config
         )
+        self.optim_experiment.save()
 
     def prepare(self):
         print("Preparing reconstruction optimization ...")
@@ -928,8 +929,6 @@ class Scenario:
 
         self.evaluators: dict[str, Evaluator] = {}
 
-        self.settings_dirpath = Path(config["settings_dirpath"])
-
         self._n_buildings_reconstructed: int | None = None
         self._flag_zero_buildings_reconstructed: bool | None = None
 
@@ -1247,6 +1246,10 @@ class Scenario:
         return get_config_item(self.config, "crs")
 
     @property
+    def settings_dirpath(self):
+        return Path(self.config["settings_dirpath"])
+
+    @property
     def reconstruction_output_dirpath(self):
         return Path(get_config_item(self.config, "reconstruction_output_dirpath"))
 
@@ -1359,13 +1362,13 @@ class Experiment:
         building_footprints_filepath and building_identifier.
         """
         self.name = name
-        self._dirpath = Path(dirpath)
+        self._base_dirpath = Path(dirpath)
         self.default_config = default_config
         self.scenario_settings = scenario_settings
-        self.scene_parts = scene_parts
+        if scene_parts is not None:
+            self.default_config["scene_config"]["scene_parts"] = scene_parts
 
         self.scene: Scene | None = None
-        self.scene_xml_filepath = self.scene_dirpath / f"{self.name}_scene.xml"
 
         self.scenarios: dict[str, Scenario] = {}
         self.scenario_configs: dict[str, dict] = {}
@@ -1380,7 +1383,7 @@ class Experiment:
 
     @property
     def dirpath(self):
-        return self._dirpath / self.name
+        return self._base_dirpath / self.name
 
     @property
     def settings_dirpath(self):
@@ -1411,6 +1414,10 @@ class Experiment:
         return self.dirpath / "08_evaluation"
 
     @property
+    def scene_xml_filepath(self):
+        return self.scene_dirpath / f"{self.name}_scene.xml"
+
+    @property
     def summary_stats(self):
         if self._summary_stats is None:
             try:
@@ -1419,7 +1426,48 @@ class Experiment:
                 self.compute_summary_statistics()
         return self._summary_stats
 
+    def rename(self, to_name: str, update_scene: bool = False):
+        """
+
+        :param to_name: New experiment name
+        :param update_scene: Whether to update the scene. Set to true for experiments with scene, false for
+         reconstruction optimization experiments without scene.
+        :return: None
+        """
+        print(f"Renaming experiment from `{self.name}` to `{to_name}` ...")
+        from_dirpath = self.dirpath
+        to_dirpath = self._base_dirpath / to_name
+
+        # Update filepaths in the experiment's default config for scenarios
+        deep_replace_in_string_values(self.default_config, str(from_dirpath), str(to_dirpath))
+
+        # The scene XML is about the only file containing the experiment's name, so it must be renamed. Additionally,
+        # if HELIOS++ has already compiled the scene, rename the .scene file as well.
+        # These filepaths are updated in the config below by calling self.setup(), which calls self.setup_scene()
+        if self.scene_xml_filepath.is_file():
+            self.scene_xml_filepath.rename(self.scene_dirpath / f"{to_name}_scene.xml")
+        if self.scene_xml_filepath.with_suffix(".scene").is_file():
+            self.scene_xml_filepath.with_suffix(".scene").rename(self.scene_dirpath / f"{to_name}_scene.scene")
+
+        from_dirpath.rename(to_dirpath)
+        # Critical step: Changing this instance's name. Afterward, all path property return the new path.
+        self.name = to_name
+
+        if update_scene:
+            # Calling self.setup_scene() updates self.default_config["scene_config"] with the new scene paths and names
+            self.setup_scene()
+
+        for n, s in self.scenarios.items():
+            # Update filepaths in the scenario's config
+            deep_replace_in_string_values(s.config, str(from_dirpath), str(to_dirpath))
+            if update_scene:
+                # Apply the updated scene paths and names to the scenario's scene config
+                s.config["scene_config"] = self.default_config["scene_config"]
+
+        self.save(save_scenarios=True)
+
     def load_summary_stats(self):
+        print("Loading summary statistics from file ...")
         self._summary_stats = pd.read_csv(self.evaluation_dirpath / "summary_statistics.csv")
 
     def setup(self):
@@ -1428,6 +1476,7 @@ class Experiment:
         self.setup_scene()
         # self.setup_configs()  # todo: remove if no bugs occur; see below.
         self.setup_scenarios()
+        self.save()
 
     def setup_directories(self):
         """Create all main directories for the experiment"""
@@ -1445,7 +1494,7 @@ class Experiment:
         # Create the scene for the experiment
         scene_xml_id = f"{self.name.lower()}_scene"
         scene_name = f"{self.name}_scene"
-        scene_parts = self.default_config["scene_config"]["scene_parts"] if self.scene_parts is None else self.scene_parts
+        scene_parts = self.default_config["scene_config"]["scene_parts"]
         self.scene = Scene(
             filepath=str(self.scene_xml_filepath),
             xml_id=scene_xml_id,
@@ -1464,7 +1513,7 @@ class Experiment:
         """Setup individual config dictionaries for each scenario, and save them as JSON for reference"""
 
         if self.scenario_settings is None:
-            raise ValueError("Cannot set up configs: No scenario settings provided (scenario_settings is None).")
+            raise ValueError("Cannot set up scenarios: No scenario settings provided (scenario_settings is None).")
         else:
             for i, scenario_settings in enumerate(self.scenario_settings):
                 self.add_scenario(scenario_settings, i)
@@ -1551,9 +1600,6 @@ class Experiment:
         if self.scenario_settings is not None:
             with open(self.settings_dirpath / "scenario_settings.json", "w", encoding="utf-8") as f:
                 json.dump({"scenario_settings": self.scenario_settings}, f, indent=4, ensure_ascii=False)
-        if self.scene_parts is not None:
-            with open(self.settings_dirpath / "scene_parts.json", "w", encoding="utf-8") as f:
-                json.dump({"scene_parts": self.scene_parts}, f, indent=4, ensure_ascii=False)
         if save_scenarios:
             print("Saving scenario configurations ...")
             for name, s in self.scenarios.items():
@@ -1561,29 +1607,27 @@ class Experiment:
 
     @classmethod
     def load(cls, dirpath: Path | str, load_scenarios: bool = True) -> Self:
+        print("Loading experiment configuration ...")
         dirpath = Path(dirpath)
         settings_dirpath = dirpath / "02_settings"
-        print("Loading experiment configuration ...")
+
         with open(settings_dirpath / "default_config.json", "r") as f:
             default_config = json.load(f)
+
         try:
             with open(settings_dirpath / "scenario_settings.json", "r") as f:
                 scenario_settings = json.load(f)["scenario_settings"]
         except FileNotFoundError:
             print("File `scenario_settings.json` not found.")
             scenario_settings = None
-        try:
-            with open(settings_dirpath / "scene_parts.json", "r") as f:
-                scene_parts = json.load(f)["scene_parts"]
-        except FileNotFoundError:
-            print("File `scene_parts.json` not found.")
-            scene_parts = None
+
         print("Initializing experiment ...")
         e = Experiment(name=dirpath.name, dirpath=dirpath.parent, default_config=default_config,
-                       scenario_settings=scenario_settings, scene_parts=scene_parts)
+                       scenario_settings=scenario_settings)
         if load_scenarios:
             print("Loading scenarios ...")
             e.load_scenarios()
+
         return e
 
     # todo: update - is outdated
@@ -1771,6 +1815,7 @@ class Experiment:
     #         print(f"Finished evaluating scenario {name} after {str(timedelta(seconds=t1-t0))}.\n")
 
     def compute_summary_statistics(self, evaluator_selection: list[str] | str | None = None):
+        print("Computing summary statistics from all scenarios ...")
         rows = []
 
         for name, s in self.scenarios.items():
