@@ -38,10 +38,10 @@ def get_last_line_from_file(filepath: Path | str, error_message: str = "") -> st
         with open(filepath, "r") as f:
             filepaths = [fp[:-1] for fp in f.readlines()]  # remove \n
     except FileNotFoundError as e:
-        if error_message != "":
-            print(error_message)
-        raise FileNotFoundError(e.errno, e.strerror, filepath)
-    return filepaths[-1]
+        error_message = (error_message != "") * f"{error_message} " + e.strerror
+        raise FileNotFoundError(e.errno, error_message, filepath)
+    else:
+        return filepaths[-1]
 
 
 def scan_freq_from_pulse_freq_via_point_spacing(
@@ -134,3 +134,12 @@ def describe_value_counts(series: list | np.ndarray | pd.Series):
         "num_multiple": sum(vc > 1),
         "val_multiple": vc[vc > 1].to_dict()
     }
+
+
+def is_numeric(o: object) -> bool:
+    try:
+        float(o)
+    except ValueError:
+        return False
+    else:
+        return True
