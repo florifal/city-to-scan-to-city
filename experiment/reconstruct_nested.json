@@ -189,6 +189,11 @@
       "extension of regularised lines prior to optimisation",
       "float",
       1.399999976158142
+    ],
+    "thres_tri_snap": [
+      "",
+      "float",
+      0.019999999552965164
     ]
   },
   "nodes": {
@@ -402,11 +407,11 @@
       "connections": {
         "arrangement": [
           [
-            "ArrExtruder-LoD12",
+            "Arr2LinearRings-LoD12",
             "arrangement"
           ],
           [
-            "Arr2LinearRings-LoD12",
+            "ArrExtruder-LoD12",
             "arrangement"
           ]
         ]
@@ -444,11 +449,11 @@
       "connections": {
         "arrangement": [
           [
-            "ArrExtruder-LoD13",
+            "Arr2LinearRings-LoD13",
             "arrangement"
           ],
           [
-            "Arr2LinearRings-LoD13",
+            "ArrExtruder-LoD13",
             "arrangement"
           ]
         ]
@@ -486,11 +491,11 @@
       "connections": {
         "arrangement": [
           [
-            "ArrExtruder-LoD22",
+            "Arr2LinearRings-LoD22",
             "arrangement"
           ],
           [
-            "Arr2LinearRings-LoD22",
+            "ArrExtruder-LoD22",
             "arrangement"
           ]
         ]
@@ -702,7 +707,7 @@
       "connections": {
         "result": [
           [
-            "SkipReplaceTester",
+            "AlphaShape-ground",
             "skip"
           ],
           [
@@ -710,7 +715,7 @@
             "skip"
           ],
           [
-            "AlphaShape-ground",
+            "SkipReplaceTester",
             "skip"
           ]
         ]
@@ -836,19 +841,11 @@
         ],
         "pts_per_roofplane": [
           [
-            "PC2MeshQuality-LoD13",
-            "ipoints"
-          ],
-          [
-            "DetectLines",
+            "AlphaShape",
             "pts_per_roofplane"
           ],
           [
-            "PC2MeshQuality-LoD11",
-            "ipoints"
-          ],
-          [
-            "OptimiseArrangmentGrid",
+            "DetectLines",
             "pts_per_roofplane"
           ],
           [
@@ -856,19 +853,27 @@
             "ipoints"
           ],
           [
-            "PC2MeshQuality-LoD22",
+            "PlaneIntersect",
+            "pts_per_roofplane"
+          ],
+          [
+            "PC2MeshQuality-LoD13",
             "ipoints"
           ],
           [
-            "PlaneIntersect",
-            "pts_per_roofplane"
+            "PC2MeshQuality-LoD11",
+            "ipoints"
+          ],
+          [
+            "PC2MeshQuality-LoD22",
+            "ipoints"
           ],
           [
             "SegmentRasterise",
             "pts_per_roofplane"
           ],
           [
-            "AlphaShape",
+            "OptimiseArrangmentGrid",
             "pts_per_roofplane"
           ]
         ],
@@ -924,24 +929,24 @@
         ],
         "total_roofplane_cnt": [
           [
-            "Arr2LinearRings-LoD22",
-            "attributes"
-          ],
-          [
-            "Arr2LinearRings-LoD12",
-            "attributes"
-          ],
-          [
-            "Arr2LinearRings-LoD13",
-            "attributes"
-          ],
-          [
             "AttrRingsSelector-LoD12",
             "attributes_A"
           ],
           [
             "AttrRingsSelector-LoD13",
             "attributes_A"
+          ],
+          [
+            "Arr2LinearRings-LoD12",
+            "attributes"
+          ],
+          [
+            "Arr2LinearRings-LoD22",
+            "attributes"
+          ],
+          [
+            "Arr2LinearRings-LoD13",
+            "attributes"
           ]
         ]
       },
@@ -999,12 +1004,12 @@
       "connections": {
         "pts_per_roofplane": [
           [
-            "OptimiseArrangmentGrid",
-            "ground_pts_per_roofplane"
-          ],
-          [
             "AlphaShape-ground",
             "pts_per_roofplane"
+          ],
+          [
+            "OptimiseArrangmentGrid",
+            "ground_pts_per_roofplane"
           ]
         ]
       },
@@ -1093,12 +1098,12 @@
       "connections": {
         "faces": [
           [
-            "PolygonTriangulator-LoD13",
-            "polygons"
-          ],
-          [
             "Validator-LoD13",
             "input_geom"
+          ],
+          [
+            "PolygonTriangulator-LoD13",
+            "polygons"
           ]
         ]
       },
@@ -1124,12 +1129,12 @@
       "connections": {
         "faces": [
           [
-            "PolygonTriangulator-LoD22",
-            "polygons"
-          ],
-          [
             "Validator-LoD22",
             "input_geom"
+          ],
+          [
+            "PolygonTriangulator-LoD22",
+            "polygons"
           ]
         ]
       },
@@ -1155,8 +1160,8 @@
       "connections": {
         "mesh": [
           [
-            "PolygonTriangulator-LoD11",
-            "polygons"
+            "FacesSelector-LoD22",
+            "faces_A"
           ],
           [
             "FacesSelector-LoD13",
@@ -1167,8 +1172,8 @@
             "faces_A"
           ],
           [
-            "FacesSelector-LoD22",
-            "faces_A"
+            "PolygonTriangulator-LoD11",
+            "polygons"
           ]
         ]
       },
@@ -1195,25 +1200,25 @@
       "connections": {
         "arrangement": [
           [
-            "ArrDissolve-LoD22",
-            "arrangement"
-          ],
-          [
             "ArrDissolve-LoD12",
             "arrangement"
           ],
           [
             "ArrDissolve-LoD13",
             "arrangement"
+          ],
+          [
+            "ArrDissolve-LoD22",
+            "arrangement"
           ]
         ],
         "groundparts": [
           [
-            "DataCoverageCalc",
-            "ground_parts"
+            "Arr2LinearRings-LoD13",
+            "groundparts"
           ],
           [
-            "Arr2LinearRings-LoD13",
+            "Arr2LinearRings-LoD12",
             "groundparts"
           ],
           [
@@ -1221,8 +1226,8 @@
             "groundparts"
           ],
           [
-            "Arr2LinearRings-LoD12",
-            "groundparts"
+            "DataCoverageCalc",
+            "ground_parts"
           ]
         ]
       },
@@ -1625,7 +1630,7 @@
         ],
         "heightfield": [
           [
-            "OptimiseArrangmentGrid",
+            "ArrDissolve-LoD12",
             "heightfield"
           ],
           [
@@ -1637,7 +1642,7 @@
             "heightfield"
           ],
           [
-            "ArrDissolve-LoD12",
+            "OptimiseArrangmentGrid",
             "heightfield"
           ]
         ]
@@ -1675,19 +1680,7 @@
       "connections": {
         "replace": [
           [
-            "FacesSelector-LoD12",
-            "replace"
-          ],
-          [
-            "FacesSelector-LoD13",
-            "replace"
-          ],
-          [
             "FacesSelector-LoD22",
-            "replace"
-          ],
-          [
-            "AttrRingsSelector-LoD22",
             "replace"
           ],
           [
@@ -1697,41 +1690,45 @@
           [
             "AttrRingsSelector-LoD13",
             "replace"
+          ],
+          [
+            "AttrRingsSelector-LoD22",
+            "replace"
+          ],
+          [
+            "FacesSelector-LoD12",
+            "replace"
+          ],
+          [
+            "FacesSelector-LoD13",
+            "replace"
           ]
         ],
         "roof_type": [
           [
-            "Arr2LinearRings-LoD22",
-            "attributes"
+            "AttrRingsSelector-LoD12",
+            "attributes_A"
+          ],
+          [
+            "AttrRingsSelector-LoD13",
+            "attributes_A"
           ],
           [
             "Arr2LinearRings-LoD12",
             "attributes"
           ],
           [
-            "Arr2LinearRings-LoD13",
+            "Arr2LinearRings-LoD22",
             "attributes"
           ],
           [
-            "AttrRingsSelector-LoD12",
-            "attributes_A"
-          ],
-          [
-            "AttrRingsSelector-LoD13",
-            "attributes_A"
+            "Arr2LinearRings-LoD13",
+            "attributes"
           ]
         ],
         "skip": [
           [
-            "FacesSelector-LoD13",
-            "skip"
-          ],
-          [
-            "FacesSelector-LoD22",
-            "skip"
-          ],
-          [
-            "FacesSelector-LoD12",
+            "AttrRingsSelector-LoD13",
             "skip"
           ],
           [
@@ -1739,11 +1736,19 @@
             "skip"
           ],
           [
-            "AttrRingsSelector-LoD12",
+            "FacesSelector-LoD22",
             "skip"
           ],
           [
-            "AttrRingsSelector-LoD13",
+            "FacesSelector-LoD13",
+            "skip"
+          ],
+          [
+            "FacesSelector-LoD12",
+            "skip"
+          ],
+          [
+            "AttrRingsSelector-LoD12",
             "skip"
           ]
         ]
@@ -1790,7 +1795,7 @@
         "triangles_snapped": false
       },
       "parameters": {
-        "dist_thres": 0.019999999552965164
+        "dist_thres": "{{thres_tri_snap}}"
       },
       "position": [
         2396.5,
