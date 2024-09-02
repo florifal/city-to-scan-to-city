@@ -143,3 +143,13 @@ def is_numeric(o: object) -> bool:
         return False
     else:
         return True
+
+
+def deep_replace_in_string_values(d: dict, search: str, replace: str):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            deep_replace_in_string_values(v, search, replace)
+        elif isinstance(v, str):
+            d[k] = v.replace(search, replace,)
+        else:
+            pass
