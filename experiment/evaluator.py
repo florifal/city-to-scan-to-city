@@ -1,4 +1,4 @@
-import cjio.cityjson
+import time
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -7,6 +7,7 @@ import pdal
 import open3d as o3d
 import numpy.lib.recfunctions as rfn
 from pathlib import Path
+from datetime import timedelta
 from cjio import cityjson
 from shapely import box
 
@@ -18,9 +19,11 @@ from experiment.utils import rms, get_face_count_from_gpkg, get_face_count_from_
 
 def print_starting_message(func):
     def wrapper(self):
-        print(f"Starting {self.__class__.__name__} ...\n")
+        print(f"\nStarting {self.__class__.__name__} ...")
+        t0 = time.time()
         func(self)
-        print(f"\nFinished {self.__class__.__name__}.\n")
+        t1 = time.time()
+        print(f"\nFinished {self.__class__.__name__} after {str(timedelta(seconds=t1 - t0))}.")
     return wrapper
 
 
@@ -130,12 +133,14 @@ class Evaluator:
 
     @property
     def summary_stats(self) -> dict:
+        """A dictionary of descriptive statistics of the relevant results"""
         if self._summary_stats == {}:
             self.compute_summary_stats()
         return self._summary_stats
 
     @property
     def results_final(self) -> pd.DataFrame:
+        """All relevant columns with results for all buildings (BuildingsEvaluator) or the dataset (DatasetEvaluator)"""
         if isinstance(self, BuildingsEvaluator):
             return pd.concat([
                 self.results[self.final_columns],
@@ -462,14 +467,17 @@ class GeopackageBuildingsEvaluator(DatasetEvaluator):
         self.gpkg_layers = {lod.replace(".", ""): layer_name for lod, layer_name in gpkg_layers.items()}
         self.id_col_name = id_col_name
 
-    @print_starting_message
-    def run(self):
+    def count(self):
         value_counts_descr = {}
         for lod, layer_name in self.gpkg_layers.items():
             gpkg = gpd.read_file(self.gpkg_filepath, layer=layer_name)
             value_counts_descr[lod] = describe_value_counts(gpkg[self.id_col_name])
 
         self.results_df = pd.DataFrame.from_dict(value_counts_descr, orient="columns")
+
+    @print_starting_message
+    def run(self):
+        self.count()
         self.output_csv_filepath: Path = self.output_dirpath / f"evaluation_{GeopackageBuildingsEvaluator.name}.csv"
         self.save_results()
 
@@ -767,7 +775,8 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
         """
         super().__init__(output_base_dirpath)
         # In case the LOD strings were passed with a "." (as in "1.2"), remove them
-        self.input_obj_filepath_pairs = {lod.replace(".", ""): fp_tuple for lod, fp_tuple in input_obj_filepath_pairs.items()}
+        self.input_obj_filepath_pairs = {lod.replace(".", ""): fp_tuple
+                                         for lod, fp_tuple in input_obj_filepath_pairs.items()}
         self.lods = list(self.input_obj_filepath_pairs.keys())
 
         self.hausdorff_evaluators: dict[str, HausdorffEvaluator] = {}
@@ -805,16 +814,19 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
 
     def compute_summary_stats(self):
         self._summary_stats = {}
+
         for lod in self.lods:
-            hausdorff_col = self.results[f"hausdorff_{lod}"]
-            key_prefix = f"hausdorff_{lod}_"
-            self._summary_stats.update({
-                key_prefix + "rms": rms(hausdorff_col),
-                key_prefix + "mean": hausdorff_col.mean(),
-                key_prefix + "median": hausdorff_col.median(),
-                key_prefix + "min": hausdorff_col.min(),
-                key_prefix + "max": hausdorff_col.max()
-            })
+            col_names = [f"hausdorff_{lod}", f"rms_min_dist_{lod}"]
+            for col_name in col_names:
+                column = self.results[col_name]
+                key_prefix = col_name + "_"
+                self._summary_stats.update({
+                    key_prefix + "rms": rms(column),
+                    key_prefix + "mean": column.mean(),
+                    key_prefix + "median": column.median(),
+                    key_prefix + "min": column.min(),
+                    key_prefix + "max": column.max()
+                })
 
 
 class HausdorffEvaluator(BuildingsEvaluator):
@@ -834,7 +846,7 @@ class HausdorffEvaluator(BuildingsEvaluator):
         self.split_input_obj_dirpath_1 = self.input_obj_filepath_1.parent / self.input_obj_filepath_1.stem
         self.split_input_obj_dirpath_2 = self.input_obj_filepath_2.parent / self.input_obj_filepath_2.stem
 
-        self.final_columns = ["hausdorff"]
+        self.final_columns = ["hausdorff", "rms_min_dist"]
 
     def split_obj_files(self, quick_skip=True):
         """Split both input OBJ files up into one OBJ file for each object group found within the input file
@@ -882,7 +894,9 @@ class HausdorffEvaluator(BuildingsEvaluator):
                 self.split_input_obj_dirpath_1 / filename,
                 self.split_input_obj_dirpath_2 / filename
             )
-            results_dict = {"file": Path(filename).stem,  "hausdorff": max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])}
+            results_dict = {"file": Path(filename).stem}
+            results_dict["hausdorff"] = max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])
+            results_dict["rms_min_dist"] = np.sqrt(np.mean([hausdorff_io_dict["RMS"] ** 2, hausdorff_oi_dict["RMS"] ** 2]))
             results_dict.update({f"{key}_io": value for key, value in hausdorff_io_dict.items()})
             results_dict.update({f"{key}_oi": value for key, value in hausdorff_oi_dict.items()})
             results.append(results_dict)
@@ -1058,7 +1072,7 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
                                                results_available[prefix + "in"].sum(),
 
                     # RMS of the normalized difference and normalized RMS differences (w.r.t. input area or volume)
-                    # todo: decide what to normalize on: mean? something else?
+                    # todo: decide what to normalize on. currently: mean. something else?
                     prefix + "rms_norm_diff": rms(self.results[prefix + "norm_diff"]),
                     prefix + "norm_rms_diff": rms(results_available[prefix + "diff"]) /
                                               results_available[prefix + "in"].mean(),
@@ -1069,7 +1083,7 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
                                                    results_available[prefix + "in"].sum(),
 
                     # RMS of the normalized absolute difference and normalized RMS absolute difference
-                    # todo: decide what to normalize on: mean? something else?
+                    # todo: decide what to normalize on. currently: mean. something else?
                     prefix + "rms_norm_abs_diff": rms(self.results[prefix + "norm_abs_diff"]),
                     prefix + "norm_rms_abs_diff": rms(results_available[prefix + "abs_diff"]) /
                                                   results_available[prefix + "in"].mean()
