@@ -1,9 +1,10 @@
 import collections.abc
 from pathlib import Path
+import experiment.global_vars as glb
 
 
 class Config:
-    """As of now unused class Config. Possibly to replace dictionary configs later."""
+    """Draft of the as of now unused class Config. Possibly to replace dictionary configs later."""
 
     def __init__(
             self,
@@ -105,13 +106,39 @@ def scenario_default_config():
         "std_vertical_error": 0.0
     }
 
+    # Need to add prefix "range_" because all config keys must be unique across all (sub-) dictionaries (at the moment)
+    optim_parameter_space = glb.geoflow_optim_parameter_space
+
+    recon_optim_config = {
+        "optimization_footprints_filepath": "",
+        "optimization_footprints_sql": "",
+        "recon_optim_output_dirpath": "",
+        "parameter_space": optim_parameter_space,
+        "recon_optim_evaluators": ["iou_3d", "hausdorff"],  # list of Evaluators to run
+        "recon_optim_metrics": {"iou_3d": ["iou_22_mean"], "hausdorff": ["hausdorff_22_rms", "rms_min_dist_22_mean"]},
+        "recon_optim_target_lod": "2.2",  # with point
+        # "recon_optim_target_evaluator": "iou_3d",  # name of an Evaluator subclass
+        # "recon_optim_target_metric": "iou_22_mean",  # name of a summary statistic key
+        # "recon_optim_target_metric_optimum": "max",  # whether to maximize (max) or minimize (min) for optimality
+        # "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
+        # "recon_optim_target_metric": "hausdorff_22_rms",  # name of a summary statistic key
+        # "recon_optim_target_metric_optimum": "min",  # whether to maximize (max) or minimize (min) for optimality
+        "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
+        "recon_optim_target_metric": "rms_min_dist_22_mean",  # name of a summary statistic key
+        "recon_optim_target_metric_optimum": "min"  # whether to maximize (max) or minimize (min) for optimality
+    }
+
+    geoflow_parameters = glb.geoflow_parameters_default
+
     reconstruction_config = {
-        "config_toml_filepath": "",  # UNUSED
-        "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__()
         "building_footprints_filepath": "",
+        "building_footprints_sql": "",
         "building_identifier": "",
         "reconstruction_output_dirpath": "",
-        "geoflow_log_filepath": ""  # UNUSED
+        "geoflow_parameters": geoflow_parameters,
+        "geoflow_log_filepath": "",  # UNUSED
+        "config_toml_filepath": "",  # UNUSED
+        "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__()
     }
 
     evaluation_config = {
@@ -125,10 +152,13 @@ def scenario_default_config():
     # Final scenario settings
 
     scenario_config = {
+        "scenario_name": "",
         "crs": "epsg:7415",
+        "settings_dirpath": "",
         "scene_config": scene_config,
         "survey_config": survey_config,
         "cloud_processing_config": cloud_processing_config,
+        "recon_optim_config": recon_optim_config,
         "reconstruction_config": reconstruction_config,
         "evaluation_config": evaluation_config
     }
