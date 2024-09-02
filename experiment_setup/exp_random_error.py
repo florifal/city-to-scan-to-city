@@ -46,6 +46,19 @@ default_config["survey_config"]["flight_path_config"].update(
     }
 )
 
+default_config["recon_optim_config"].update(
+    {
+        "optimization_footprints_filepath": str(input_dirpath / "delft_subset_footprints.gpkg"),
+    }
+)
+
+default_config["reconstruction_config"].update(
+    {
+        "building_footprints_filepath": str(input_dirpath / "delft_subset_footprints.gpkg"),
+        "building_identifier": "identificatie"
+    }
+)
+
 default_config["evaluation_config"]["input_cityjson_filepath"] = str(input_dirpath / "9-276-556.city.json")
 default_config["evaluation_config"].update(
     {
@@ -68,13 +81,6 @@ scene_parts = [
         "material_name": "ground"
     }
 ]
-
-default_config["reconstruction_config"].update(
-    {
-        "building_footprints_filepath": str(input_dirpath / "delft_subset_footprints.gpkg"),
-        "building_identifier": "identificatie"
-    }
-)
 
 pulse_freqs_hz = [31_250, 62_500, 125_000, 250_000, 500_000]  # [31_250, 62_500, 125_000]
 
