@@ -463,11 +463,6 @@ class Scenario:
         return self.reconstruction_config["building_footprints_filepath"]
 
 
-def generate_scenario(name: str, config: dict, default_config: dict) -> Scenario:
-    full_config = deep_update(default_config, config)
-    return Scenario(name, config)
-
-
 class Experiment:
     """An experiment consisting of multiple scenarios"""
 
@@ -1044,3 +1039,8 @@ class ReconstructionOptimization:
     @property
     def result(self):
         return self._result
+
+
+def generate_scenario(name: str, config: dict, default_config: dict) -> Scenario:
+    full_config = deep_update(default_config, config)
+    return Scenario(name, config)
