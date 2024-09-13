@@ -173,24 +173,32 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
             output_base_dirpath: Path | str,
             point_cloud_filepath: Path | str,
             bbox: list[float],
-            building_footprints: gpd.GeoSeries,
+            building_footprints_gpkg_filepath: Path | str,
             crs: str,
             save_filtered_point_clouds: bool = False,
+            footprints_density_computation: bool = True,
             radial_density_computation: bool = True
     ):
         super().__init__(output_base_dirpath)
         self.point_cloud_filepath = Path(point_cloud_filepath)
         self.bbox = bbox
-        self.building_footprints = building_footprints
+        self.building_footprints_gpkg_filepath = Path(building_footprints_gpkg_filepath)
+        self.building_footprints: gpd.GeoSeries | None = None
         self.crs = crs
         self.save_filtered_point_clouds = save_filtered_point_clouds
+        self.footprints_density_computation = footprints_density_computation
         self.radial_density_computation = radial_density_computation
 
         self.results_df = pd.DataFrame()
-        self.final_columns = ["density_overall", "density_buildings", "density_local_volume", "density_local_surface"]
+        self.final_columns = ["density_overall"]
+        if self.footprints_density_computation:
+            self.final_columns.append("density_buildings")
+        if self.radial_density_computation:
+            self.final_columns.extend(["density_local_volume", "density_local_surface"])
 
     def compute_overall_ground_density(self):
-        print("Computing overall ground density ...")
+        print("\nComputing overall ground density ...")
+        print("- Reading point cloud and clipping to bbox ...")
         reader = pdal.Reader(str(self.point_cloud_filepath), nosrs=True, default_srs=self.crs)
 
         filter_expression = f"X >= {self.bbox[0]} && X <= {self.bbox[2]} && Y >= {self.bbox[1]} && Y <= {self.bbox[3]}"
@@ -200,6 +208,7 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         n_points = pipeline.execute()
 
         if self.save_filtered_point_clouds:
+            print("- Writing clipped point cloud ...")
             self.save_filtered_point_cloud(pipeline, "_bbox")
 
         bbox_poly = box(*self.bbox)
@@ -212,7 +221,15 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         )
 
     def compute_buildings_ground_density(self):
-        print("Computing ground density within building footprints ...")
+        print("\nComputing ground density within building footprints ...")
+        print("- Reading building footprints ...")
+
+        self.building_footprints = gpd.read_file(
+            self.building_footprints_gpkg_filepath,
+            layer=gpd.list_layers(self.building_footprints_gpkg_filepath).name.loc[0]
+        ).geometry
+
+        print("- Reading point cloud and clipping to footprints ...")
         reader = pdal.Reader(str(self.point_cloud_filepath), nosrs=True, default_srs=self.crs)
 
         # todo: consider to count points with Classification == 6 instead of within building footprints
@@ -223,6 +240,7 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
         n_points = pipeline.execute()
 
         if self.save_filtered_point_clouds:
+            print("- Writing clipped point cloud ...")
             self.save_filtered_point_cloud(pipeline, "_buildings")
 
         footprints_area = self.building_footprints.area.sum()
@@ -280,7 +298,8 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
     def run(self):
         results = []
         results.append(self.compute_overall_ground_density())
-        results.append(self.compute_buildings_ground_density())
+        if self.footprints_density_computation:
+            results.append(self.compute_buildings_ground_density())
         if self.radial_density_computation:
             results.append(self.compute_radial_density())
         self.results_df = pd.concat(results, axis=1)
