@@ -1,8 +1,7 @@
 from xml.etree import ElementTree as eT
+from pyhelios.util import flight_planner
 
 from .global_vars import helios_survey_template_filepath
-from .scene_part import ScenePart
-from pyhelios.util import scene_writer, flight_planner
 
 
 def parse_xml_with_comments(xml_filepath: str) -> eT.ElementTree:
@@ -64,58 +63,6 @@ class XMLGenerator:
         if self.tree is None:
             self.create_element_tree()
         self.tree.write(self.filepath, encoding="UTF-8", xml_declaration=self.xml_declaration)
-
-
-class SceneGenerator(XMLGenerator):
-    """Create an XML file for a pyhelios scene from scene parts."""
-
-    def __init__(self, filepath: str, xml_id: str, name: str):
-        """Parameters
-
-        :param filepath: Destination path for the scene XML file.
-        :param xml_id: Attribute id of tag scene.
-        :param name: Attribute name of tag scene.
-        """
-        super().__init__(filepath, xml_declaration=True)
-
-        self.xml_id = xml_id
-        self.name = name
-
-        self._scene_parts = []
-        self.xml_string = None
-
-    def add_scene_parts(self, scene_parts: list[ScenePart] | ScenePart):
-        """Add scene parts to the scene.
-
-        :param scene_parts: A single ScenePart object or a list of ScenePart objects.
-        :return: None
-        """
-        if (
-                not isinstance(scene_parts, ScenePart) and
-                not (isinstance(scene_parts, list) and all(isinstance(p, ScenePart) for p in scene_parts))
-        ):
-            raise TypeError("Argument scene_parts must be an instance of ScenePart or a list of ScenePart instances.")
-        if isinstance(scene_parts, ScenePart):
-            self._scene_parts.append(scene_parts)
-        else:
-            self._scene_parts.extend(scene_parts)
-
-    def create_xml_string(self):
-        if self.name is None:
-            raise ValueError("Name of scene must be defined before creating XML string.")
-
-        # Generate the XML as string using build_scene from pyhelios.utils.scene_writer
-        self.xml_string = scene_writer.build_scene(
-            scene_id=self.xml_id,
-            name=self.name,
-            sceneparts=[str(p) for p in self._scene_parts]
-        )
-
-    def write_file(self):
-        """Write the scene XML string to the destination filepath."""
-        if self.xml_string is None:
-            self.create_xml_string()
-        super().write_file()
 
 
 class FlightPathGenerator(XMLGenerator):
