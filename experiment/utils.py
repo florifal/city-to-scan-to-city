@@ -25,11 +25,11 @@ def crs_url_from_epsg(epsg_str: str) -> str:
     return "https://www.opengis.net/def/crs/EPSG/0/" + crs_epsg_code
 
 
-def get_wkt_from_gpkg():
+def get_wkt_from_gpkg() -> pd.Series:
     pass
 
 
-def get_wkt_from_cityjson():
+def get_wkt_from_cityjson() -> pd.Series:
     pass
 
 
@@ -54,22 +54,55 @@ def scan_freq_from_pulse_freq_via_point_spacing(
     # -> increase along-track point spacing
     # -> make it more similar to across-track point spacing
     # If the actual formula would work, then this factor should be unnecessary.
-    adjustment_factors = [1, 1/3, 1/np.pi]
-    adjustment_factor = adjustment_factors[1]
+    adjustment_factors = {
+        "should_be": 1,
+        "could_be_but_is_not": 1/np.pi,
+        "works_for_exp_random_error": 1/3,
+        "works_for_exp_utrecht": 1/3 * 1.326**2
+    }
+    adjustment_factor = adjustment_factors["works_for_exp_utrecht"]
     return np.sqrt(
         adjustment_factor * 0.5 * pulse_freq_hz * velocity
         / altitude / np.tan(1.0 * scan_angle_deg * np.pi / 180)
     )
 
 
-def point_spacing_along(velocity, scan_freq_hz):
+def scan_freq_from_point_spacing(velocity: float, spacing_along: float) -> float:
+    return velocity / spacing_along
+
+
+def pulse_freq_from_point_spacing(
+        altitude: float,
+        scan_angle_deg: float,
+        velocity: float,
+        spacing_along: float,
+        spacing_across: float
+) -> float:
+    return 2 * altitude * np.tan(scan_angle_deg / 180 * np.pi) * velocity / spacing_along / spacing_across
+
+
+def point_spacing_along(velocity: float, scan_freq_hz: float):
     # horizontal_point_spacing = velocity / scan_freq_hz
     return velocity / scan_freq_hz
 
 
 def point_spacing_across(altitude: float, scan_angle_deg: float, pulse_freq_hz: float, scan_freq_hz: float):
+    """Compute across-track point spacing
+
+    Note that scan_angle_deg here is defined as the half-swath angle, i.e. measured from nadir."""
+
     # vertical_point_spacing = (2 * altitude * np.tan(scan_angle_deg / 2) * scan_freq_hz) / pulse_freq_hz
     return 2 * altitude * np.tan(scan_angle_deg * np.pi / 180) * scan_freq_hz / pulse_freq_hz
+
+
+def point_density_theoretical(pulse_freq_hz: float, velocity: float, altitude: float, scan_angle_deg: float):
+    """Compute the theoretical point density
+
+    Note that scan_angle_deg here is defined as the half-swath angle, i.e. measured from nadir.
+    Currently, the actually observed point density as evaluated by PointDensityDatasetEvaluator is lower by a factor of
+    about 2.07."""
+
+    return pulse_freq_hz / 2 / velocity / altitude / np.tan(scan_angle_deg * np.pi / 180)
 
 
 def swath_width(altitude: int, scan_angle_deg: int) -> int:
@@ -153,3 +186,21 @@ def deep_replace_in_string_values(d: dict, search: str, replace: str):
             d[k] = v.replace(search, replace,)
         else:
             pass
+
+
+def add_material_to_wavefront_objects(obj_in_filepath: str | Path, obj_out_filepath: str | Path, mat_name: str):
+    obj_in_filepath, obj_out_filepath = Path(obj_in_filepath), Path(obj_out_filepath)
+    with open(obj_in_filepath, "r") as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        new_lines.append(line)
+        if line.startswith("o "):
+            new_lines.append(f"usemtl {mat_name}\n")
+    with open(obj_out_filepath, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+
+def get_most_recently_created_folder(dirpath: Path | str):
+    folders = [f for f in Path(dirpath).iterdir() if f.is_dir()]
+    return max(folders, key=lambda f: f.stat().st_ctime)
