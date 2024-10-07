@@ -35,7 +35,7 @@ def get_bidirectional_hausdorff_distances(
         sample_faces: bool = True,
         sample_number: int = 10000
 ) -> tuple[dict[str, float | int], dict[str, float | int]]:
-    """Computes both directional Hausdorff distances for two OBJ meshes using PyMeshLab"""
+    """Computes both unidirectional Hausdorff distances for two OBJ meshes using PyMeshLab"""
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(str(obj_filepath_1))
     ms.load_new_mesh(str(obj_filepath_2))
@@ -50,6 +50,36 @@ def get_bidirectional_hausdorff_distances(
         samplenum=sample_number
     )
     hausdorff_21_dict = ms.get_hausdorff_distance(
+        sampledmesh=1,
+        targetmesh=0,
+        savesample=False,
+        samplevert=sample_vertices,
+        sampleedge=sample_edges,
+        sampleface=sample_faces,
+        samplenum=sample_number
+    )
+
+    return hausdorff_12_dict, hausdorff_21_dict
+
+
+def get_unidirectional_hausdorff_distances(
+        obj_filepath_1: Path | str,
+        obj_filepath_2: Path | str,
+        sample_vertices: bool = True,
+        sample_edges: bool = True,
+        sample_faces: bool = True,
+        sample_number: int = 10000
+) -> tuple[dict[str, float | int], dict[str, float | int]]:
+    """Computes unidirectional Hausdorff distance for two OBJ meshes using PyMeshLab
+
+    This implementation does not make much sense and its form can be explained by the fact that it is mostly a remnant
+    from an earlier application in the HausdorffEvaluator where unintentionally only the unidirectional Hausdorff
+    distance was computed."""
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh(str(obj_filepath_1))
+    ms.load_new_mesh(str(obj_filepath_2))
+
+    hausdorff_12_dict = ms.get_hausdorff_distance(
         sampledmesh=0,
         targetmesh=1,
         savesample=False,
@@ -58,6 +88,11 @@ def get_bidirectional_hausdorff_distances(
         sampleface=sample_faces,
         samplenum=sample_number
     )
+    # Originally, the previous ms.get_hausdorff_distance() would be restated here, with exactly the same arguments,
+    # instead of swapping sampledmesh and targetmesh. This delivers slightly different values for mean and RMS, probably
+    # due to the random sampling of the mesh's surface. Now, just to keep the function structure identical to the one
+    # that computes the actual bidirectional distance, we simply copy the dict.
+    hausdorff_21_dict = hausdorff_12_dict.copy()
 
     return hausdorff_12_dict, hausdorff_21_dict
 
@@ -312,7 +347,9 @@ class PointDensityDatasetEvaluator(DatasetEvaluator):
 
     @property
     def results_final(self):
-        return self.results.loc[["mean", "std", "min", "max"], self.final_columns]
+        # Find available rows. "std", "min", and "max" are only available if compute_radial_density() was used.
+        rows = [row for row in ["mean", "std", "min", "max"] if row in self.results.index]
+        return self.results.loc[rows, self.final_columns]
 
 
 # todo
@@ -328,12 +365,14 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
             output_base_dirpath: Path | str,
             point_cloud_filepath: Path | str,
             mesh_filepath: Path | str,
-            crs: str
+            crs: str,
+            save_all_points_with_distances: bool = False
     ):
         super().__init__(output_base_dirpath)
         self.point_cloud_filepath = point_cloud_filepath
         self.mesh_filepath = mesh_filepath
         self.crs = crs
+        self.save_all_points_with_distances = save_all_points_with_distances
 
         self.points_and_distances: np.ndarray | None = None
         self.points_and_distances_df: pd.DataFrame | None = None
@@ -365,7 +404,8 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
     @print_starting_message
     def run(self):
         self.compute_building_point_mesh_distance()
-        self.points_and_distances_df.to_csv(self.output_dirpath / f"evaluation_{self.name}_all_points.csv")
+        if self.save_all_points_with_distances:
+            self.points_and_distances_df.to_csv(self.output_dirpath / f"evaluation_{self.name}_all_points.csv")
         self.distances_hist_df.to_csv(self.output_dirpath / f"evaluation_{self.name}_histogram.csv")
         self.save_results()
 
@@ -375,10 +415,6 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
             for metric, value in self.results.point_mesh_distance.to_dict().items()
         }
 
-    # todo: remove
-    # @property
-    # def results_final(self):
-    #     return self.results
 
 # todo
 # class HorizontalAndVerticalPointMeshDistanceEvaluator(DatasetEvaluator):
@@ -687,6 +723,7 @@ class HeightEvaluator(BuildingsEvaluator):
 
 
 class ComplexityEvaluator(BuildingsEvaluator):
+    """Evaluates the complexity of building models provided as GeoPackage or Wavefront OBJ"""
     name = "complexity"
     possible_extensions = [".gpkg", ".obj"]
 
@@ -695,7 +732,8 @@ class ComplexityEvaluator(BuildingsEvaluator):
             output_base_dirpath: Path | str,
             input_filepath: Path | str | list[Path] | list[str],
             lods: list[str],
-            index_col_name: str = "",
+            gpkg_index_col_name: str = "",
+            gpkg_lod_layer_names: dict[str, str] | None = None,
             ignore_meshes_with_zero_faces: bool = True
     ):
         """ComplexityEvaluator
@@ -703,7 +741,7 @@ class ComplexityEvaluator(BuildingsEvaluator):
         :param output_base_dirpath: Directory for evaluation results
         :param input_filepath: Single filepath for Geopackage (.gpkg), list of filepaths for Wavefront OBJ (.obj)
         :param lods: List of LODs, e.g. ["1.2", "1.3", "2.2"]
-        :param index_col_name: (required for Geopackage) Name of identifier column, serves as output index
+        :param gpkg_index_col_name: (required for Geopackage) Name of identifier column, serves as output index
         :param ignore_meshes_with_zero_faces: (required for Wavefront OBJ) Whether to ignore or report zero for building meshes with zero faces
         """
         super().__init__(output_base_dirpath)
@@ -723,7 +761,8 @@ class ComplexityEvaluator(BuildingsEvaluator):
             self.input_file_extension = self.input_filepath.suffix.lower()
 
         self.lods = lods
-        self.index_col_name = index_col_name
+        self.index_col_name = gpkg_index_col_name
+        self.gpkg_lod_layer_names = gpkg_lod_layer_names
         self.ignore_meshes_with_zero_faces = ignore_meshes_with_zero_faces
 
         self.result_col_name = "n_faces"
@@ -738,12 +777,12 @@ class ComplexityEvaluator(BuildingsEvaluator):
     def get_face_counts(self):
         face_counts = {}
         for i, lod in enumerate(self.lods):
-            print(f"Counting faces for LOD {lod} ...")
+            print(f"\nCounting faces for LOD {lod} ...")
 
             if self.input_file_extension == ".gpkg":
                 face_counts[lod] = get_face_count_from_gpkg(
                     gpkg_filepath=self.input_filepath,
-                    layer_name=glb.geoflow_output_gpkg_lod_layer_names[lod],
+                    layer_name=self.gpkg_lod_layer_names[lod],
                     id_column=self.index_col_name,
                     result_col_name=self.result_col_name,
                     aggregate_by_id=True
@@ -752,7 +791,8 @@ class ComplexityEvaluator(BuildingsEvaluator):
                 face_counts[lod] = get_face_count_from_obj(
                     obj_filepath=self.input_filepath[i],
                     result_col_name=self.result_col_name,
-                    ensure_as_triangle_count=True
+                    ensure_as_triangle_count=True,
+                    aggregate_building_parts=True
                 )
 
             # Add LOD to series / column name
@@ -778,6 +818,92 @@ class ComplexityEvaluator(BuildingsEvaluator):
         }
 
 
+class ComplexityDifferenceEvaluator(BuildingsEvaluator):
+    """
+    Computes the difference in face number of the second evaluator's results w.r.t. the first evaluator's results.
+    """
+    name = "complexity_diff"
+
+    def __init__(
+            self,
+            output_base_dirpath: Path | str,
+            complexity_evaluator_1: ComplexityEvaluator,
+            complexity_evaluator_2: ComplexityEvaluator,
+            reevaluate_1: bool = False,
+            reevaluate_2: bool = False
+    ):
+        super().__init__(output_base_dirpath)
+        self.evaluator_1 = complexity_evaluator_1
+        self.evaluator_2 = complexity_evaluator_2
+        self.reevaluate_1 = reevaluate_1
+        self.reevaluate_2 = reevaluate_2
+
+        self.suffix_1 = "_in"
+        self.suffix_2 = "_out"
+
+        # Only the difference metrics go into the final columns, not the columns with the numbers of faces of input and
+        # output models (results of the two individual complexity evaluators). This is a design choice to keep the
+        # regular ComplexityEvaluator as a default Scenario evaluator as well, which also contributes its final columns
+        # to concat_evaluation_results(), to avoid duplicating these columns there. If the regular ComplexityEvaluator
+        # gets kicked, the ComplexityDifferenceEvaluator may contribute the numbers of faces instead, too. Then you want
+        # to uncomment the first two list entries.
+        diff_metrics = ["diff", "abs_diff", "ratio", "norm_diff", "norm_abs_diff"]
+        self.final_columns = [
+            # *self.evaluator_1.final_columns,
+            # *self.evaluator_2.final_columns,
+            f"{c}_{metric}" for c in self.evaluator_2.final_columns for metric in diff_metrics
+        ]
+
+    def run_evaluators(self):
+        for i, (reevaluate, evaluator) in enumerate(
+                [(self.reevaluate_1, self.evaluator_1),
+                 (self.reevaluate_2, self.evaluator_2)]
+        ):
+            evaluate = True
+            if not reevaluate:
+                try:
+                    evaluator.load_results()
+                except FileNotFoundError:
+                    pass
+                else:
+                    print(f"\nEvaluation results for complexity evaluator {i+1} already exist. Will not reevaluate.")
+                    evaluate = False
+
+            if evaluate:
+                evaluator.run()
+
+    def compute_difference(self):
+        # Do a right join with the results of the second ComplexityEvaluator, which should be the one evaluating the
+        # reconstruction output. This ensures that the complexity difference is evaluated only for buildings that were
+        # reconstructed.
+        self.results_df = self.evaluator_1.results.join(self.evaluator_2.results, how="right",
+                                                        lsuffix=self.suffix_1, rsuffix=self.suffix_2)
+
+        for col_name in self.evaluator_2.results.columns:
+            face_count_1 = self.results_df[col_name + self.suffix_1]
+            face_count_2 = self.results_df[col_name + self.suffix_2]
+            self.results_df[col_name + "_diff"] = face_count_2 - face_count_1
+            self.results_df[col_name + "_abs_diff"] = (face_count_2 - face_count_1).abs()
+            self.results_df[col_name + "_ratio"] = face_count_2 / face_count_1
+            self.results_df[col_name + "_norm_diff"] = (face_count_2 - face_count_1) / face_count_1
+            self.results_df[col_name + "_norm_abs_diff"] = (face_count_2 - face_count_1).abs() / face_count_1
+
+    @print_starting_message
+    def run(self):
+        self.run_evaluators()
+        self.compute_difference()
+        self.save_results()
+
+    def compute_summary_stats(self):
+        diff_metric_columns = [c for c in self.results.columns if self.suffix_1 not in c and self.suffix_2 not in c]
+        self._summary_stats = {
+            f"{col_name}_{metric.replace('50%', 'median')}": value
+            for col_name, column in self.results.describe().to_dict(orient="dict").items()
+            for metric, value in column.items()
+            if col_name in diff_metric_columns and metric not in ["count", "25%", "75%"]
+        }
+
+
 class HausdorffLODSEvaluator(BuildingsEvaluator):
     """Compute Hausdorff distances between all objects present in multiple pairs of Wavefront OBJ files"""
     name = "hausdorff"
@@ -785,14 +911,20 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
     def __init__(
             self,
             output_base_dirpath: Path | str,
-            input_obj_filepath_pairs: dict[str, tuple[Path | str, Path | str]]
+            input_obj_filepath_pairs: dict[str, tuple[Path | str, Path | str]],
+            bidirectional: bool = False
     ):
         """
 
         :param output_base_dirpath: Directory for evaluation results
         :param input_obj_filepath_pairs: Dictionary. Key: Name of LOD. Value: Tuple of two paths to two OBJ files.
         """
-        super().__init__(output_base_dirpath)
+        self.bidirectional = bidirectional
+        self.col_suffix = "" if self.bidirectional else "_uni"
+        self.directionality = "bidirectional" if self.bidirectional else "unidirectional"
+        name = "hausdorff" if self.bidirectional else "hausdorff_uni"
+        super().__init__(output_base_dirpath, name)
+
         # In case the LOD strings were passed with a "." (as in "1.2"), remove them
         self.input_obj_filepath_pairs = {lod.replace(".", ""): fp_tuple
                                          for lod, fp_tuple in input_obj_filepath_pairs.items()}
@@ -800,26 +932,27 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
 
         self.hausdorff_evaluators: dict[str, HausdorffEvaluator] = {}
 
-        self.final_columns = [f"hausdorff_{lod}" for lod in self.lods]
+        self.final_columns = [*[f"hausdorff{self.col_suffix}_{lod}" for lod in self.lods],
+                              *[f"rms_min_dist{self.col_suffix}_{lod}" for lod in self.lods]]
 
     def setup_hausdorff_evaluators(self):
-        print("Setting up a HausdorffEvaluator for each LOD ...\n")
+        print(f"\nSetting up a HausdorffEvaluator ({self.directionality}) for each LOD ...")
         for lod, filepaths in self.input_obj_filepath_pairs.items():
             input_obj_filepath_1, input_obj_filepath_2 = filepaths
             self.hausdorff_evaluators[lod] = HausdorffEvaluator(
                 output_base_dirpath=self.output_base_dirpath,
                 input_obj_filepath_1=input_obj_filepath_1,
-                input_obj_filepath_2=input_obj_filepath_2
+                input_obj_filepath_2=input_obj_filepath_2,
+                bidirectional=self.bidirectional
             )
 
     def run_hausdorff_evaluators(self):
         for lod, hausdorff_evaluator in self.hausdorff_evaluators.items():
-            print(f"Running HausdorffEvaluator for LOD '{lod}' ...\n")
+            print(f"\nRunning HausdorffEvaluator for LOD '{lod}' ...")
             hausdorff_evaluator.split_obj_files()
             hausdorff_evaluator.compute_hausdorff_distances()
-            print()
 
-        print("Joining results ...")
+        print("\nJoining results ...")
         self.results_df = pd.concat(
             [evaluator.results_df.add_suffix(f"_{lod}") for lod, evaluator in self.hausdorff_evaluators.items()],
             axis=1
@@ -827,6 +960,7 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
 
     @print_starting_message
     def run(self):
+        print(f"\nThis HausdorffLODSEvaluator is {self.directionality}.")
         self.setup_hausdorff_evaluators()
         self.run_hausdorff_evaluators()
         self.save_results()
@@ -835,7 +969,7 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
         self._summary_stats = {}
 
         for lod in self.lods:
-            col_names = [f"hausdorff_{lod}", f"rms_min_dist_{lod}"]
+            col_names = [f"hausdorff{self.col_suffix}_{lod}", f"rms_min_dist{self.col_suffix}_{lod}"]
             for col_name in col_names:
                 column = self.results[col_name]
                 key_prefix = col_name + "_"
@@ -857,29 +991,35 @@ class HausdorffEvaluator(BuildingsEvaluator):
             output_base_dirpath: Path | str,
             input_obj_filepath_1: Path | str,
             input_obj_filepath_2: Path | str,
+            bidirectional: bool = False
     ):
-        super().__init__(output_base_dirpath)
+        self.bidirectional = bidirectional
+        self.col_suffix = "" if self.bidirectional else "_uni"
+        self.directionality = "bidirectional" if self.bidirectional else "unidirectional"
+        name = "hausdorff" if self.bidirectional else "hausdorff_uni"
+        super().__init__(output_base_dirpath, name)
+
         self.input_obj_filepath_1 = Path(input_obj_filepath_1)
         self.input_obj_filepath_2 = Path(input_obj_filepath_2)
 
         self.split_input_obj_dirpath_1 = self.input_obj_filepath_1.parent / self.input_obj_filepath_1.stem
         self.split_input_obj_dirpath_2 = self.input_obj_filepath_2.parent / self.input_obj_filepath_2.stem
 
-        self.final_columns = ["hausdorff", "rms_min_dist"]
+        self.final_columns = ["hausdorff" + self.col_suffix, "rms_min_dist" + self.col_suffix]
 
     def split_obj_files(self, quick_skip=True):
         """Split both input OBJ files up into one OBJ file for each object group found within the input file
         :param quick_skip: If a subdirectory with the name (without extension) of the respective input OBJ file exists
         already, assume that the input OBJ file was split previously and skip the splitting step
         """
-        print("Splitting OBJ files into one file per individual object ...")
+        print("\nSplitting OBJ files into one file per individual object ...")
         if not quick_skip or not self.split_input_obj_dirpath_1.is_dir():
             split_obj_file(self.input_obj_filepath_1, output_dirpath=self.split_input_obj_dirpath_1, overwrite=False)
         if not quick_skip or not self.split_input_obj_dirpath_2.is_dir():
             split_obj_file(self.input_obj_filepath_2, output_dirpath=self.split_input_obj_dirpath_2, overwrite=False)
 
     def compute_hausdorff_distances(self, very_verbose=False):
-        print("Identifying individual OBJ files present in both input datasets ...")
+        print("\nIdentifying individual OBJ files present in both input datasets ...")
         print("- Directories:")
         print(f"  Input 1: {self.split_input_obj_dirpath_1}")
         print(f"  Input 2: {self.split_input_obj_dirpath_2}")
@@ -906,25 +1046,35 @@ class HausdorffEvaluator(BuildingsEvaluator):
                 print("- Files present only in directory 2:")
                 print("\n".join([f"  {fn}" for fn in filenames_only_2]))
 
-        print("Computing Hausdorff distances between split OBJ files ...")
+        print(f"Computing {self.directionality} Hausdorff distances between split OBJ files ...")
         results = []
+
+        if self.bidirectional:
+            get_hausdorff_distances = get_bidirectional_hausdorff_distances
+        else:
+            get_hausdorff_distances = get_unidirectional_hausdorff_distances
+
+        print()
         for i, filename in enumerate(common_filenames):
-            hausdorff_io_dict, hausdorff_oi_dict = get_bidirectional_hausdorff_distances(
+            print(f"{filename} ", end="")
+            hausdorff_io_dict, hausdorff_oi_dict = get_hausdorff_distances(
                 self.split_input_obj_dirpath_1 / filename,
                 self.split_input_obj_dirpath_2 / filename
             )
             results_dict = {"file": Path(filename).stem}
-            results_dict["hausdorff"] = max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])
-            results_dict["rms_min_dist"] = np.sqrt(np.mean([hausdorff_io_dict["RMS"] ** 2, hausdorff_oi_dict["RMS"] ** 2]))
-            results_dict.update({f"{key}_io": value for key, value in hausdorff_io_dict.items()})
-            results_dict.update({f"{key}_oi": value for key, value in hausdorff_oi_dict.items()})
+            results_dict["hausdorff" + self.col_suffix] = max(hausdorff_io_dict["max"], hausdorff_oi_dict["max"])
+            results_dict["rms_min_dist" + self.col_suffix] = np.sqrt(np.mean([hausdorff_io_dict["RMS"] ** 2, hausdorff_oi_dict["RMS"] ** 2]))
+            results_dict.update({f"{key}_io{self.col_suffix}": value for key, value in hausdorff_io_dict.items()})
+            results_dict.update({f"{key}_oi{self.col_suffix}": value for key, value in hausdorff_oi_dict.items()})
             results.append(results_dict)
+        print("\n\n- All done.")
 
         self.results_df = pd.DataFrame(results).set_index("file")
         self.results_df.index.name = glb.target_identifier_name
 
     @print_starting_message
     def run(self):
+        print(f"\nThis HausdorffEvaluator is {self.directionality}.")
         self.split_obj_files()
         self.compute_hausdorff_distances()
         self.save_results()
@@ -955,7 +1105,7 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
         super().__init__(output_base_dirpath=output_base_dirpath_2)
         self.output_base_dirpath_1 = Path(output_base_dirpath_1)
         self.output_base_dirpath_2 = Path(output_base_dirpath_2)
-        self.output_base_dirpath_1.mkdir(exist_ok=True)  # output_base_dirpath_2 is created by parent class
+        self.output_base_dirpath_1.mkdir(exist_ok=True)  # output_base_dirpath_2 is created by parent class via super().__init__()
         self.input_cityjson_filepath_1 = Path(input_cityjson_filepath_1)
         self.input_cityjson_filepath_2 = Path(input_cityjson_filepath_2)
         self.index_col_name_1 = index_col_name_1
@@ -1066,6 +1216,8 @@ class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
                     ~self.results[prefix + "out"].isna() &
                     ~self.results[prefix + "in"].isna()
                 ]
+
+                self._summary_stats[prefix + "count"] = diff_col.count()
 
                 self._summary_stats.update({
                     prefix + "in_mean": self.results[prefix + "in"].mean(),
@@ -1274,6 +1426,7 @@ class IOU3DEvaluator(FMEEvaluator):
             key_prefix = f"iou_{lod}_"
             iou_col = self.results[f"iou_{lod}"]
             self._summary_stats.update({
+                key_prefix + "count": iou_col.count(),
                 key_prefix + "rms": rms(iou_col),
                 key_prefix + "mean": iou_col.mean(),
                 key_prefix + "median": iou_col.median(),
