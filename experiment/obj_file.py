@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from shutil import copy2
 import numpy as np
+import pandas as pd
 
 from experiment.utils import has_outliers
 
@@ -9,6 +10,25 @@ from experiment.utils import has_outliers
 def split_obj_file(obj_filepath: Path | str, output_dirpath: Path | str, overwrite: bool = False):
     file = OBJFile(obj_filepath)
     file.write_individual_objects(output_dirpath, overwrite)
+
+
+def get_face_count_from_obj(
+        obj_filepath: Path | str,
+        result_col_name: str = "n_faces",
+        ensure_as_triangle_count: bool = False,
+        aggregate_building_parts: bool = True
+) -> pd.Series:
+    obj = OBJFile(obj_filepath)
+    n_faces = obj.num_triangles if ensure_as_triangle_count else obj.num_faces
+    if aggregate_building_parts:
+        n_faces_agg = n_faces.copy()
+        for object_name, object_num_faces in n_faces.items():
+            if object_name[-2] == "-" or object_name[-3] == "-":
+                belongs_to_name = object_name.rsplit("-", 1)[0]
+                n_faces_agg[belongs_to_name] += n_faces[object_name]
+                n_faces_agg.pop(object_name, None)
+        n_faces = n_faces_agg
+    return pd.Series(data=list(n_faces.values()), index=list(n_faces.keys()), name=result_col_name)
 
 
 class OBJFile:

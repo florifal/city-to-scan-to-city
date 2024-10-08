@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import subprocess
-import json
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 import bayes_opt as bo
 from pathlib import Path
 from cjio import cityjson as cj
-
-from experiment.obj_file import OBJFile
 
 
 def execute_subprocess(cmd):
@@ -149,25 +146,6 @@ def get_face_count_from_gpkg(
         gpkg = gpkg.set_index(id_column)
         gpkg = gpkg[result_col_name].copy()  # make a Series
     return gpkg
-
-
-def get_face_count_from_obj(
-        obj_filepath: Path | str,
-        result_col_name: str = "n_faces",
-        ensure_as_triangle_count: bool = False,
-        aggregate_building_parts: bool = True
-) -> pd.Series:
-    obj = OBJFile(obj_filepath)
-    n_faces = obj.num_triangles if ensure_as_triangle_count else obj.num_faces
-    if aggregate_building_parts:
-        n_faces_agg = n_faces.copy()
-        for object_name, object_num_faces in n_faces.items():
-            if object_name[-2] == "-" or object_name[-3] == "-":
-                belongs_to_name = object_name.rsplit("-", 1)[0]
-                n_faces_agg[belongs_to_name] += n_faces[object_name]
-                n_faces_agg.pop(object_name, None)
-        n_faces = n_faces_agg
-    return pd.Series(data=list(n_faces.values()), index=list(n_faces.keys()), name=result_col_name)
 
 
 def describe_value_counts(series: list | np.ndarray | pd.Series):

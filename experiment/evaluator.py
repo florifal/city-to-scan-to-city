@@ -13,8 +13,8 @@ from shapely import box
 
 import experiment.global_vars as glb
 from experiment.fme_pipeline import FMEPipeline, FMEPipelineAreaVolume, FMEPipelineIOU3D
-from experiment.obj_file import split_obj_file, OBJFile
-from experiment.utils import rms, get_face_count_from_gpkg, get_face_count_from_obj, describe_value_counts
+from experiment.obj_file import split_obj_file, OBJFile, get_face_count_from_obj
+from experiment.utils import rms, get_face_count_from_gpkg, describe_value_counts
 
 
 def print_starting_message(func):
