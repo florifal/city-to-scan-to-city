@@ -1,11 +1,24 @@
 from __future__ import annotations
 from pathlib import Path
 from shutil import copy2
+import numpy as np
 
 
 def split_obj_file(obj_filepath: Path | str, output_dirpath: Path | str, overwrite: bool = False):
     file = OBJFile(obj_filepath)
     file.write_individual_objects(output_dirpath, overwrite)
+
+
+def has_outliers(data: np.ndarray, threshold: float = 100) -> bool:
+    """Check for outliers in data
+
+    Outliers are values whose absolute distance from the median is larger than the median absolute distance from the
+    median by a factor that exceeds the threshold value. Adapted from https://stackoverflow.com/a/16562028
+    """
+    distance_from_median = np.abs(data - np.median(data))
+    median_distance_from_median = np.median(distance_from_median)
+    ratio = distance_from_median / median_distance_from_median if median_distance_from_median else np.zeros(len(d))
+    return (ratio > threshold).any()
 
 
 class OBJFile:
@@ -70,6 +83,7 @@ class OBJFile:
             #     raise Exception(f"OBJ parser encountered unparsable line (no. {i+1}):\n{line}\nIn file:\n{filepath}")
 
         self.add_object(current_object)
+        self.vertices_np = np.array(self.vertices).astype(float)
 
     def add_object(self, o: OBJObject | None):
         if o is not None:
@@ -127,6 +141,9 @@ class OBJFile:
             if overwrite or not (dirpath / self.mtllib).is_file():
                 copy2(self.filepath.parent / self.mtllib, dirpath / self.mtllib)
 
+    def has_outlier_vertices(self, threshold=1e3):
+        return any([has_outliers(self.vertices_np[:, dim], threshold=threshold) for dim in range(3)])
+
     @property
     def num_faces(self):
         return {o.name: o.num_faces for o in self.objects}
@@ -137,6 +154,7 @@ class OBJFile:
 
 
 class OBJFace:
+    """A single face: Its vertex IDs (not the actual coordinates), material, and parent object if present"""
 
     def __init__(self, vertex_ids: list, material: str | None = None, o: OBJObject | None = None):
         """Define a new face
@@ -151,6 +169,7 @@ class OBJFace:
 
 
 class OBJObject:
+    """An object group of faces as indicated by a line starting with `o`"""
 
     def __init__(self, name: str):
         self.name = name
