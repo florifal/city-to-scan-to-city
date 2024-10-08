@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import subprocess
+import json
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import bayes_opt as bo
 from pathlib import Path
+from cjio import cityjson as cj
 
 from experiment.obj_file import OBJFile
 
@@ -149,10 +154,19 @@ def get_face_count_from_gpkg(
 def get_face_count_from_obj(
         obj_filepath: Path | str,
         result_col_name: str = "n_faces",
-        ensure_as_triangle_count: bool = False
+        ensure_as_triangle_count: bool = False,
+        aggregate_building_parts: bool = True
 ) -> pd.Series:
     obj = OBJFile(obj_filepath)
     n_faces = obj.num_triangles if ensure_as_triangle_count else obj.num_faces
+    if aggregate_building_parts:
+        n_faces_agg = n_faces.copy()
+        for object_name, object_num_faces in n_faces.items():
+            if object_name[-2] == "-" or object_name[-3] == "-":
+                belongs_to_name = object_name.rsplit("-", 1)[0]
+                n_faces_agg[belongs_to_name] += n_faces[object_name]
+                n_faces_agg.pop(object_name, None)
+        n_faces = n_faces_agg
     return pd.Series(data=list(n_faces.values()), index=list(n_faces.keys()), name=result_col_name)
 
 
@@ -204,3 +218,164 @@ def add_material_to_wavefront_objects(obj_in_filepath: str | Path, obj_out_filep
 def get_most_recently_created_folder(dirpath: Path | str):
     folders = [f for f in Path(dirpath).iterdir() if f.is_dir()]
     return max(folders, key=lambda f: f.stat().st_ctime)
+
+
+def get_newest_recon_optim_log_filepath(dirpath: Path | str):
+    optim_log_filepaths = [f for f in Path(dirpath).iterdir()
+                           if f.is_file() and f.name.startswith("optimization_") and f.suffix == ".log"]
+    return max(optim_log_filepaths, key=lambda f: f.stat().st_ctime)
+
+
+def subset_cityjson_to_gpkg_contents(gpkg_fp: Path | str, cj_in_fp: Path | str, cj_out_fp: Path | str):
+    gpkg_fp, cj_in_fp, cj_out_fp = Path(gpkg_fp), Path(cj_in_fp), Path(cj_out_fp)
+
+    gpkg = gpd.read_file(gpkg_fp, layer=gpd.list_layers(gpkg_fp)["name"][0])
+    ids = list(gpkg.identificatie)
+
+    cj_in = cj.load(cj_in_fp)
+    cj_subset = cjio_subset_properly(cj_in, ids)
+
+    # cj_subset = cj_in.get_subset_ids(ids)
+    # # After taking the subset, it appears to be necessary to call .load_from_j() to copy the CityObjects from the JSON
+    # # representation to the CityJSON API structure. Otherwise, .save() will write zero CityObjects, and while before
+    # # saving .get_info() reports the expected number of CityObjects, after saving it also reports zero CityObjects.
+    # cj_subset.load_from_j()
+
+    cj.save(cj_subset, cj_out_fp, indent=True)
+
+
+def cjio_subset_properly(cm: cj.CityJSON, ids: list[str], exclude: bool = False):
+    """An attempt to fix the CityJSON.subset() method"""
+
+    cm_subset = cm.get_subset_ids(ids, exclude=exclude)
+
+    # After taking the subset, it appears to be necessary to call .load_from_j() to copy the CityObjects from the JSON
+    # representation to the CityJSON API structure. Otherwise, .save() will write zero CityObjects, and while before
+    # saving .get_info() reports the expected number of CityObjects, after saving it also reports zero CityObjects.
+    cm_subset.load_from_j()
+
+    # Then, the transform must be copied manually. It would be copied if it were still in the original CityJSON's `j`
+    # dictionary, but it cannot be, because when the original CityJSON is loaded from the disk, .load() calls
+    # .load_from_j(), and the latter .pop()s the transform from the `j` dictionary to transfer it to the .transform
+    # variable. Therefore, it is not copied from the original `j["transform"]`, even though .subset() tries to.
+    cm_subset.transform = cm.transform
+    cm_subset.j["transform"] = cm_subset.transform
+
+    return cm_subset
+
+
+def plural_s(things: list | dict | int | float | bool):
+    try:
+        things = len(things)
+    except TypeError:
+        try:
+            things = abs(things)
+        except TypeError:
+            raise TypeError(f"Type {type(things)} does not have a length or an absolute value.")
+    return "s" * (things != 1)
+
+
+def get_processing_sequence(n_scenarios = 143, seed_scenario = 55):
+    """
+    This one is still very much hard-coded for the number of density and error scenarios. To be generalized if required.
+    Would have to introduce: n_error_levels, n_density_levels
+    :param n_scenarios:
+    :param seed_scenario:
+    :return:
+    """
+
+    # The error cascade is simple: Each scenario depends on the previous one in terms of numbering (and, in terms of
+    # error, the next-lower one with identical density), except those that are multiples of 11, because they already
+    # have zero error, so they cannot rely on a scenario with lower error.
+    # Note that a number -1 indicates that no adjacent scenario exists / should be relied on.
+    error_cascade = [i - 1 if i not in [j * 11 for j in range(13)] else -1 for i in range(n_scenarios)]
+
+    # The density cascade is a bit more tricky: Because the seed scenario is 55, scenarios with lower density are
+    # supposed to load optimizer logs from those with the next-higher density and identical error, while scenarios
+    # with higher density than 55 (i.e., starting at 66) are supposed to load optimizer logs from those with the
+    # next-lower density.
+    # Note that a number -1 indicates that no adjacent scenario exists / should be relied on.
+    density_cascade = []
+
+    for i in range(n_scenarios):
+        if i < seed_scenario:
+            density_cascade.append(i + 11)
+        elif seed_scenario <= i < seed_scenario + 11:
+            density_cascade.append(-1)
+        elif i >= seed_scenario + 11:
+            density_cascade.append(i - 11)
+        else:
+            print("Crap. This shouldn't have happened.")
+
+    # The error and density cascades are merged into a single list, which identifies for each scenario up to two scenarios from which it should load the optimizer logs.
+    load_scenario_optimizer_states = []
+    for i, (e, d) in enumerate(zip(error_cascade, density_cascade)):
+        adjacent_scenarios = []
+        if e != -1:
+            adjacent_scenarios.append(e)
+        if d != -1:
+            adjacent_scenarios.append(d)
+        load_scenario_optimizer_states.append(adjacent_scenarios)
+
+    # For each scenario, identify which other scenarios depend on it and can therefore be executed afterwards.
+    next_scenarios = [[] for i in range(n_scenarios)]
+
+    for current_scenario, adjacent_scenarios in enumerate(load_scenario_optimizer_states):
+        for adjacent_scenario in adjacent_scenarios:
+            next_scenarios[adjacent_scenario].append(current_scenario)
+
+    # Establish the processing sequence such that all dependencies are fulfilled at each step, i.e., for each scenario once it is run
+    def append_next_to_sequence_after(current_scenario, sequence):
+        # Check the scenarios that depend on this scenario
+        for next_scenario in next_scenarios[current_scenario]:
+            # Only consider adding the following scenario if it's not already in the sequence
+            if next_scenario not in sequence:
+                # Make sure not only the current scenario, but also all other scenarios the following scenario may rely on are already in the sequence before adding the following scenario. Otherwise, do nothing, and it will be added later on.
+                if all([adjacent_scenario in sequence for adjacent_scenario in
+                        load_scenario_optimizer_states[next_scenario]]):
+                    sequence.append(next_scenario)
+                    # Follow the cascade: Check whether to add the scenarios following the scenario just added.
+                    append_next_to_sequence_after(next_scenario, sequence)
+
+    sequence = [seed_scenario]
+    append_next_to_sequence_after(seed_scenario, sequence)
+
+    # Check if calculated sequence is valid: For each scenario occurring, all scenarios it relies on must be present in
+    # the sequence before it.
+    order_correct = []
+    for i, s in enumerate(sequence):
+        all_dependencies_fulfilled = [scenario in sequence[:i] for scenario in load_scenario_optimizer_states[s]]
+        order_correct.extend(all_dependencies_fulfilled)
+
+    if not all(order_correct):
+        raise Exception("Algorithm to compute processing sequence failed: Order of final sequence is not correct.")
+
+    return load_scenario_optimizer_states, next_scenarios, sequence
+
+
+def force_duplicate_probe_now(optimizer: bo.BayesianOptimization, probe_parameter_sets: list[dict] | dict):
+    if not isinstance(probe_parameter_sets, list):
+        probe_parameter_sets = [probe_parameter_sets]
+
+    allow_duplicate_points = optimizer._allow_duplicate_points
+
+    optimizer._allow_duplicate_points = True
+    optimizer._space._allow_duplicate_points = True
+
+    for parameter_set in probe_parameter_sets:
+        optimizer.probe(parameter_set, lazy=False)
+
+    optimizer._allow_duplicate_points = allow_duplicate_points
+    optimizer._space._allow_duplicate_points = allow_duplicate_points
+
+
+def has_outliers(data: np.ndarray, threshold: float = 100) -> bool:
+    """Check for outliers in data
+
+    Outliers are values whose absolute distance from the median is larger than the median absolute distance from the
+    median by a factor that exceeds the threshold value. Adapted from https://stackoverflow.com/a/16562028
+    """
+    distance_from_median = np.abs(data - np.median(data))
+    median_distance_from_median = np.median(distance_from_median)
+    ratio = distance_from_median / median_distance_from_median if median_distance_from_median else np.zeros(len(d))
+    return (ratio > threshold).any()
