@@ -46,8 +46,7 @@ class UniqueKeeperMerger(CloudMerger):
         self.separation_coords: list[float] = []
 
         self.cloud_filtered_filepaths = [
-            (self.output_dirpath / (filepath.stem + "_filtered.laz")).as_posix()
-            for filepath in self.cloud_filepaths
+            self.output_dirpath / (filepath.stem + "_filtered.laz") for filepath in self.cloud_filepaths
         ]
 
         self.point_cloud_arrays = None
@@ -117,11 +116,6 @@ class UniqueKeeperMerger(CloudMerger):
         point_cloud_arrays = [pipeline.arrays[0] for pipeline in pipelines]
         del pipelines
 
-        # Prepare list of columns that should be contained in the final output
-        undesired_columns = ['GpsTime', 'echo_width', 'fullwaveIndex', 'hitObjectId', 'heliosAmplitude']
-        self.columns_out = [col_name for col_name, _ in point_cloud_arrays[0].dtype.descr if
-                       col_name not in undesired_columns]
-
         print("\nComputing mean within-cloud nearest-neighbor distances ...")
         # Compute mean of within-cloud nearest neighbor distances for each swath
         mean_NN_distances = [np.mean(arr["NNDistance"]) for arr in point_cloud_arrays]
@@ -148,6 +142,7 @@ class UniqueKeeperMerger(CloudMerger):
                     numpy_point_clouds[p], k=1, distance_upper_bound=10, workers=-1
                 )
 
+                # todo: generalize this into a function
                 # Create a new structured array that includes the between-cloud nearest neighbor distance
                 new_col_name = f'CC_NNDistance_{a}'
                 dtype_new = np.dtype(
@@ -178,8 +173,8 @@ class UniqueKeeperMerger(CloudMerger):
 
             # Pipeline to apply the filter expression and save the filtered cloud
             pipeline = pdal.Filter.expression(expression=filter_expression).pipeline(point_array)
-            pipeline |= pdal.Writer(filename=self.cloud_filtered_filepaths[p], minor_version=4, a_srs=self.crs,
-                                    compression=True, extra_dims=extra_dims)
+            pipeline |= pdal.Writer(filename=str(self.cloud_filtered_filepaths[p]), minor_version=4,
+                                    a_srs=self.crs, compression=True, extra_dims=extra_dims)
             n_points = pipeline.execute()
             print(f"- Remaining number of points: {n_points}")
 
@@ -189,10 +184,50 @@ class UniqueKeeperMerger(CloudMerger):
         print("Finished filtering all point clouds.")
         self.point_cloud_arrays = point_cloud_arrays
 
-    def filter_clouds_successively(self):
+    def filter_clouds_sequentially(self):
         pass
 
     def merge_clouds(self):
+        # If merging previously filtered and saved clouds (i.e., without running filter_clouds() again), load them
+        if self.point_cloud_arrays is None:
+            self.point_cloud_arrays = []
+            print("\nReading previously filtered point clouds from disk ...")
+
+            for filepath in self.cloud_filtered_filepaths:
+                print(f"- Reading {filepath.name} ...", end="\r")
+                pipeline = pdal.Reader(str(filepath), nosrs=True, default_srs=self.crs).pipeline()
+                n_points = pipeline.execute()
+                print(f"- Reading {filepath.name} ... {n_points} points read.")
+                self.point_cloud_arrays.append(pipeline.arrays[0])
+            del pipeline
+
+        # Add a new field to each point cloud that will indicate the source point cloud after merging
+        print("\nAdding a source field to each filtered point cloud ...")
+        source_col_name = "Source"
+        source_col_dtype = "uint8"
+        extra_dims = f"{source_col_name}={source_col_dtype}"
+        for p, point_array in enumerate(self.point_cloud_arrays):
+            # todo: generalize this into a function
+            # Create a new structured array that includes a new source field
+            # Append a new unsigned int column to the dtypes
+            dtype_new = np.dtype(
+                point_array.dtype.descr + [(source_col_name, source_col_dtype)]
+            )
+            point_array_new = np.zeros(point_array.shape, dtype=dtype_new)  # Create an empty array with zeros
+            for col_name, _ in point_array.dtype.descr:
+                point_array_new[col_name] = point_array[col_name]  # Copy values from existing array
+            point_array_new[source_col_name] = p  # Insert new values: Index of the point cloud array
+
+            self.point_cloud_arrays[p] = point_array_new  # Replace the point cloud array with the new one
+
+        # Prepare list of columns that should be contained in the final output
+        undesired_columns = ["GpsTime", "Gps Time", "echo_width", "fullwaveIndex", "hitObjectId", "heliosAmplitude",
+                             "NNDistance"]
+        self.columns_out = [
+            col_name for col_name, _ in self.point_cloud_arrays[0].dtype.descr
+            if col_name not in undesired_columns and not col_name.startswith("CC_NNDistance")
+        ]
+
         print("\nConcatenating filtered point clouds ...")
         # Concatenate the filtered point clouds into one structured array
         point_cloud_arrays_stacked = np.hstack([arr[self.columns_out] for arr in self.point_cloud_arrays])
@@ -201,7 +236,11 @@ class UniqueKeeperMerger(CloudMerger):
         print("Writing merged point clouds to output location ...")
         # Pipeline to save the final (filtered and merged) point cloud
         pipeline = pdal.Writer(
-            filename=str(self.merged_output_cloud_filepath), minor_version=4, a_srs=self.crs, compression=True
+            filename=str(self.merged_output_cloud_filepath),
+            minor_version=4,
+            a_srs=self.crs,
+            compression=True,
+            extra_dims=extra_dims
         ).pipeline(point_cloud_arrays_stacked)
         n_points = pipeline.execute()
         print(f"- Written number of points: {n_points}")
@@ -226,7 +265,6 @@ class CloudNoiseAdder:
         self.n_points: int | None = None
 
     def run(self):
-        print("Adding noise to point cloud ...\n")
         self.n_points = self.add_noise_to_cloud(
             self.input_filepath,
             self.output_filepath,
@@ -259,11 +297,15 @@ class CloudNoiseAdder:
         for axis in axes:
             point_array[axis] = point_array[axis] + errors[axis]
 
+        # Define extra dimension for source field (currently added by UniqueKeeperMerger) todo: generalize for mergers
+        source_col_name = "Source"
+        source_col_dtype = "uint8"
+        extra_dims = f"{source_col_name}={source_col_dtype}"
+
         print("Writing output point cloud ...")
         print(f"- {output_filepath}")
-        writer = pdal.Writer(output_filepath, minor_version=4, a_srs=crs, compression=True)
+        writer = pdal.Writer(str(output_filepath), minor_version=4, a_srs=crs, compression=True, extra_dims=extra_dims)
         pipeline = writer.pipeline(point_array)
         n_points = pipeline.execute()
 
-        print()
         return n_points
