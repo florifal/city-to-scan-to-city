@@ -94,6 +94,7 @@ def scenario_default_config():
     survey_config = {
         "survey_xml_filepath": "",
         "survey_output_dirpath": "",
+        "target_density": 0,  # Not used in any computations, only to pass it through to the evaluation
         "survey_generator_config": survey_generator_config,
         "flight_path_config": flight_path_config,
         "survey_executor_config": survey_executor_config,
@@ -102,40 +103,52 @@ def scenario_default_config():
 
     cloud_processing_config = {
         "cloud_processing_output_dirpath": "",
+        "error_level": 0,  # Not used in any computations, only to pass it through to the evaluation
         "std_horizontal_error": 0.0,
         "std_vertical_error": 0.0
     }
 
-    # Need to add prefix "range_" because all config keys must be unique across all (sub-) dictionaries (at the moment)
-    optim_parameter_space = glb.geoflow_optim_parameter_space
-
     recon_optim_config = {
         "optimization_footprints_filepath": "",
         "optimization_footprints_sql": "",
-        "recon_optim_output_dirpath": "",
-        "parameter_space": optim_parameter_space,
-        "recon_optim_evaluators": ["iou_3d", "hausdorff"],  # list of Evaluators to run
+        "optimization_cityjson_filepath": "",
+        "recon_optim_output_dirpath": "",  # set by Experiment
+        "parameter_space": glb.geoflow_optim_parameter_space_narrow_2,
+        "parameter_sets_to_probe": [],
+        "load_scenario_optimizer_states": [],
+        # List Evaluators to run and which of their metrics to report
+        "recon_optim_evaluators": ["iou_3d", "hausdorff"],
         "recon_optim_metrics": {"iou_3d": ["iou_22_mean"], "hausdorff": ["hausdorff_22_rms", "rms_min_dist_22_mean"]},
-        "recon_optim_target_lod": "2.2",  # with point
+
+        # Specify optimization targets: LOD, Evaluator, metric, and whether to minimize or maximize
+        "recon_optim_target_lod": "2.2",  # provide with point
+
         # "recon_optim_target_evaluator": "iou_3d",  # name of an Evaluator subclass
         # "recon_optim_target_metric": "iou_22_mean",  # name of a summary statistic key
         # "recon_optim_target_metric_optimum": "max",  # whether to maximize (max) or minimize (min) for optimality
+
         # "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
         # "recon_optim_target_metric": "hausdorff_22_rms",  # name of a summary statistic key
         # "recon_optim_target_metric_optimum": "min",  # whether to maximize (max) or minimize (min) for optimality
+
         "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
         "recon_optim_target_metric": "rms_min_dist_22_mean",  # name of a summary statistic key
-        "recon_optim_target_metric_optimum": "min"  # whether to maximize (max) or minimize (min) for optimality
-    }
+        "recon_optim_target_metric_optimum": "min",  # whether to maximize (max) or minimize (min) for optimality
 
-    geoflow_parameters = glb.geoflow_parameters_default
+        # Experimental settings for a second target metric whose relative magnitude penalizes the first one
+        "recon_optim_target_evaluator_2": "",
+        "recon_optim_target_metric_2": "",
+        "recon_optim_target_metric_2_threshold": "",  # no penalty below
+        "recon_optim_target_metric_2_penalty": "",  # per unit in second target metric's exceedance of threshold
+        "recon_optim_target_metric_2_penalty_mode": ""  # "add" or "mult"
+    }
 
     reconstruction_config = {
         "building_footprints_filepath": "",
         "building_footprints_sql": "",
         "building_identifier": "",
         "reconstruction_output_dirpath": "",
-        "geoflow_parameters": geoflow_parameters,
+        "geoflow_parameters": glb.geoflow_parameters_default,
         "geoflow_log_filepath": "",  # UNUSED
         "config_toml_filepath": "",  # UNUSED
         "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__()
@@ -144,6 +157,7 @@ def scenario_default_config():
     evaluation_config = {
         "evaluation_output_dirpath": "",
         "input_cityjson_filepath": "",  # Input building models CityJSON for experiment evaluation
+        "input_geopackage_filepath": "",  # Input building models GPKG for evaluation (ComplexityDifferenceEvaluator)
         "input_obj_lod12_filepath": "",
         "input_obj_lod13_filepath": "",
         "input_obj_lod22_filepath": ""
