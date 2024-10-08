@@ -6,7 +6,7 @@ from experiment.scenario import Experiment
 from experiment.utils import scan_freq_from_pulse_freq_via_point_spacing
 
 experiment_name = "experiment_test_case_random_error_5x5"
-experiment_dirpath = r"C:\Users\Florian\Data\city-to-scan-to-city\Experiments"
+experiment_dirpath = r"C:\Users\Florian\Data\city-to-scan-to-city"
 input_dirpath = Path(experiment_dirpath, experiment_name, "01_input")
 
 altitude = 100  # 300
@@ -60,6 +60,7 @@ default_config["reconstruction_config"].update(
 )
 
 default_config["evaluation_config"]["input_cityjson_filepath"] = str(input_dirpath / "9-276-556.city.json")
+default_config["evaluation_config"]["input_geopackage_filepath"] = str(input_dirpath / "9-276-556.gpkg")
 default_config["evaluation_config"].update(
     {
         "input_obj_lod12_filepath": str(input_dirpath / "9-276-556-LoD12-3D.obj"),
