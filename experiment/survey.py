@@ -89,7 +89,8 @@ class Survey:
     def clear(self):
         if self.survey_executor is not None:
             self.survey_executor.clear()
-        self.cloud_merger.clear()
+        if self.cloud_merger is not None:
+            self.cloud_merger.clear()
 
         self.flight_path = None
         self.survey_generator = None
@@ -179,18 +180,23 @@ class Survey:
         # the filepaths of the clouds that should be merged from a previous survey run from the expected text file
         # location.
         if self.output_clouds_filepaths is None:
+            print("\nFilepaths of clouds to be merged from prior survey run are unknown.")
+            print("Attempting to read from `output_clouds_filepaths.txt` ...")
             try:
                 with open(self.textfile_output_clouds_list_filepath, "r") as f:
                     self.output_clouds_filepaths = [Path(fp[:-1]) for fp in f.readlines()]  # remove \n
             except FileNotFoundError as e:
-                print("\nFilepaths of clouds to be merged are unknown without prior survey run, and text file to list "
-                      "them from prior survey run does not exist.")
+                print(str(e))
+                print("Text file listing file paths not found.")
                 print("Attempting instead to identify output cloud filepaths in output directory ...")
-                # raise FileNotFoundError(e.errno, e.strerror, self.textfile_output_clouds_list_filepath.name)  # todo: remove
                 self.output_clouds_dirpath = get_most_recently_created_folder(self.output_dirpath_survey)
                 self.output_clouds_filepaths = self.get_output_point_cloud_filepaths(self.output_clouds_dirpath)
             else:
                 self.output_clouds_dirpath = self.output_clouds_filepaths[0].parent
+        print(f"\nIdentified paths of {len(self.output_clouds_filepaths)} clouds to be merged.")
+        print(f"- Folder: {self.output_clouds_dirpath.name}")
+        for i, fp in enumerate(self.output_clouds_filepaths):
+            print(f"- File {i}: {fp.name}")
 
         self.cloud_merger = UniqueKeeperMerger(
             cloud_filepaths=self.output_clouds_filepaths,
