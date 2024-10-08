@@ -3,22 +3,12 @@ from pathlib import Path
 from shutil import copy2
 import numpy as np
 
+from experiment.utils import has_outliers
+
 
 def split_obj_file(obj_filepath: Path | str, output_dirpath: Path | str, overwrite: bool = False):
     file = OBJFile(obj_filepath)
     file.write_individual_objects(output_dirpath, overwrite)
-
-
-def has_outliers(data: np.ndarray, threshold: float = 100) -> bool:
-    """Check for outliers in data
-
-    Outliers are values whose absolute distance from the median is larger than the median absolute distance from the
-    median by a factor that exceeds the threshold value. Adapted from https://stackoverflow.com/a/16562028
-    """
-    distance_from_median = np.abs(data - np.median(data))
-    median_distance_from_median = np.median(distance_from_median)
-    ratio = distance_from_median / median_distance_from_median if median_distance_from_median else np.zeros(len(d))
-    return (ratio > threshold).any()
 
 
 class OBJFile:
@@ -89,42 +79,6 @@ class OBJFile:
         if o is not None:
             self.objects.append(o)
 
-    # todo: remove
-    # def write_individual_object(self, o: Object, filepath: Path | str):
-    #     filepath = Path(filepath)
-    #
-    #     vertex_ids = o.get_vertex_ids()
-    #
-    #     lines = []
-    #
-    #     if self.mtllib is not None and self.mtllib != "":
-    #         lines.append(f"mtllib {self.mtllib}\n")
-    #
-    #     # Create vertex lines for all vertices that are used by any face of the object
-    #     for vertex_id in vertex_ids:
-    #         # OBJ vertex indexing starts at 1, list indexing starts at 0
-    #         coord_string = " ".join(self.vertices[vertex_id-1])
-    #         lines.append(f"v {coord_string}\n")
-    #
-    #     # Object definition line
-    #     lines.append(f"o {o.name}\n")
-    #
-    #     # Create face lines
-    #     for face in o.faces:
-    #         # Add line to set the material for the face, if defined
-    #         if face.material is not None and face.material != "":
-    #             lines.append(f"usemtl {face.material}\n")
-    #
-    #         # Find the indices of the vertices used for the face: It corresponds to the position of the original vertex
-    #         # index in the new list `vertex_ids`, which defines the order in which the vertices are written to the new
-    #         # file. (+1 because OBJ vertex indexing starts at 1 as opposed to list indexing.)
-    #         new_vertex_ids = [str(vertex_ids.index(vertex_id)+1) for vertex_id in face.vertex_ids]
-    #         vertex_id_string = " ".join(new_vertex_ids)
-    #         lines.append(f"f {vertex_id_string}\n")
-    #
-    #     with open(filepath, "w") as file:
-    #         file.writelines(lines)
-
     def write_individual_objects(self, dirpath: Path | str, overwrite: bool = False):
         dirpath = Path(dirpath)
         dirpath.mkdir(exist_ok=True)
@@ -135,7 +89,6 @@ class OBJFile:
                 output_filepath = dirpath / f"{o.name}.obj"
                 if overwrite or not output_filepath.is_file():
                     o.write(output_filepath, vertices=self.vertices, mtllib=self.mtllib)
-                    # self.write_individual_object(o, dirpath / f"{o.name}.obj")  # todo: remove
 
         if self.mtllib is not None and self.mtllib != "":
             if overwrite or not (dirpath / self.mtllib).is_file():
