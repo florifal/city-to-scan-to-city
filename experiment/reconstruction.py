@@ -143,6 +143,7 @@ class ReconstructionExecutor:
         self.geoflow_json_filepath = Path(geoflow_json_filepath).as_posix()
         self.config_toml_filepath = Path(config_toml_filepath).as_posix()
         self.geoflow_timeout = geoflow_timeout
+        self.execution_time = None
 
         # Command line options may be passed as single string or as list of strings. If they are a single string, they
         # must be converted to a list of strings to serve as argument for subprocess.run().
@@ -179,9 +180,18 @@ class ReconstructionExecutor:
 
         with open(self.stdout_log_filepath, "w", encoding="utf-8") as f:
             try:
-                subprocess.run(self.command, stdout=f, stderr=subprocess.STDOUT, text=True, timeout=self.geoflow_timeout, check=True)
+                subprocess.run(
+                    self.command,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=self.geoflow_timeout,
+                    check=True
+                )
             except TimeoutError as e:
                 raise TimeoutError(e)
 
         t1 = time.time()
         print(f"\nFinished 3D building reconstruction after {str(timedelta(seconds=t1 - t0))}.")
+
+        self.execution_time = t1 - t0
