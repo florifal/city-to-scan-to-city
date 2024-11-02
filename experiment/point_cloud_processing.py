@@ -4,6 +4,8 @@ from pathlib import Path
 from xml.etree import ElementTree as eT
 from scipy.spatial import KDTree
 
+import experiment.global_vars as glb
+
 
 class CloudMerger:
 
@@ -104,7 +106,7 @@ class UniqueKeeperMerger(CloudMerger):
         # Pipeline for reading all individual swath's point clouds and computing within-cloud nearest neighbor distances
         readers = [pdal.Reader(str(filepath), nosrs=True, default_srs=self.crs) for filepath in self.cloud_filepaths]
         # pipelines = [reader | pdal.Filter.nndistance(mode="kth", k=1) for reader in readers]
-        pipelines = [reader | pdal.Filter.nndistance(mode="avg", k=4) for reader in readers]  # todo: decide on settings
+        pipelines = [reader | pdal.Filter.nndistance(mode="avg", k=glb.num_neighbors_nn_distance) for reader in readers]
 
         print("\nReading input point clouds and computing within-cloud nearest-neighbor distance ...")
         for p, pipeline in enumerate(pipelines):
