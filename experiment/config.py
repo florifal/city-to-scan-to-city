@@ -134,6 +134,8 @@ def scenario_default_config():
         "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
         "recon_optim_target_metric": "rms_min_dist_22_mean",  # name of a summary statistic key
         "recon_optim_target_metric_optimum": "min",  # whether to maximize (max) or minimize (min) for optimality
+        "recon_optim_target_metric_adaptive_penalty": False,  # False: use penalty value; True: half of worst observed
+        "recon_optim_target_metric_penalty_value": 5,  # a value that is poor in terms of the target metric
 
         # Experimental settings for a second target metric whose relative magnitude penalizes the first one
         "recon_optim_target_evaluator_2": "",
@@ -151,7 +153,8 @@ def scenario_default_config():
         "geoflow_parameters": glb.geoflow_parameters_default,
         "geoflow_log_filepath": "",  # UNUSED
         "config_toml_filepath": "",  # UNUSED
-        "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__()
+        "point_cloud_filepath": "",  # LIKELY UNUSED, but currently an alternative in Reconstruction.__init__(),
+        "recon_execution_time": None
     }
 
     evaluation_config = {
@@ -161,6 +164,10 @@ def scenario_default_config():
         "input_obj_lod12_filepath": "",
         "input_obj_lod13_filepath": "",
         "input_obj_lod22_filepath": ""
+    }
+    
+    visualization_config = {
+        "visualization_dirpath": ""
     }
 
     # Final scenario settings
@@ -174,7 +181,8 @@ def scenario_default_config():
         "cloud_processing_config": cloud_processing_config,
         "recon_optim_config": recon_optim_config,
         "reconstruction_config": reconstruction_config,
-        "evaluation_config": evaluation_config
+        "evaluation_config": evaluation_config,
+        "visualization_config": visualization_config
     }
 
     return scenario_config
