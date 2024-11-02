@@ -35,7 +35,9 @@ def get_bidirectional_hausdorff_distances(
         sample_faces: bool = True,
         sample_number: int = 10000
 ) -> tuple[dict[str, float | int], dict[str, float | int]]:
-    """Computes both unidirectional Hausdorff distances for two OBJ meshes using PyMeshLab"""
+    """
+    Computes both unidirectional Hausdorff distances for two OBJ meshes using PyMeshLab
+    """
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(str(obj_filepath_1))
     ms.load_new_mesh(str(obj_filepath_2))
@@ -70,11 +72,13 @@ def get_unidirectional_hausdorff_distances(
         sample_faces: bool = True,
         sample_number: int = 10000
 ) -> tuple[dict[str, float | int], dict[str, float | int]]:
-    """Computes unidirectional Hausdorff distance for two OBJ meshes using PyMeshLab
+    """
+    Computes unidirectional Hausdorff distance for two OBJ meshes using PyMeshLab
 
     This implementation does not make much sense and its form can be explained by the fact that it is mostly a remnant
     from an earlier application in the HausdorffEvaluator where unintentionally only the unidirectional Hausdorff
-    distance was computed."""
+    distance was computed.
+    """
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(str(obj_filepath_1))
     ms.load_new_mesh(str(obj_filepath_2))
@@ -431,7 +435,9 @@ class PointMeshDistanceEvaluator(DatasetEvaluator):
 
 
 class GeoflowOutputEvaluator(DatasetEvaluator):
-    """Counts the numbers of (unique) buildings, buildings parts, and related values in Geoflow output files"""
+    """
+    Counts the numbers of (unique) buildings, buildings parts, and related values in Geoflow output files
+    """
     name = "geoflow_output"
 
     def __init__(
@@ -538,7 +544,8 @@ class GeopackageBuildingsEvaluator(DatasetEvaluator):
 
 
 class CityJSONBuildingsEvaluator(DatasetEvaluator):
-    """Information about buildings and building parts in a CityJSON file
+    """
+    Information about buildings and building parts in a CityJSON file
 
     Currently, this Evaluator does not distinguish between LODs, but reports results across all LODs in the CityJSON.
     """
@@ -605,9 +612,11 @@ class WavefrontOBJBuildingsEvaluator(DatasetEvaluator):
         self.save_results()
 
 
-class HeightEvaluator(BuildingsEvaluator):
-    """Obtains building heights from two CityJSON files for corresponding buildings and computes difference metrics"""
-    name = "height"
+class HeightDifferenceEvaluator(BuildingsEvaluator):
+    """
+    Obtains building heights from two CityJSON files for corresponding buildings and computes difference metrics
+    """
+    name = "height_diff"
     height_metrics = ["min", "50p", "70p", "max", "ground"]
 
     def __init__(
@@ -723,7 +732,9 @@ class HeightEvaluator(BuildingsEvaluator):
 
 
 class ComplexityEvaluator(BuildingsEvaluator):
-    """Evaluates the complexity of building models provided as GeoPackage or Wavefront OBJ"""
+    """
+    Evaluates the complexity of building models provided as GeoPackage or Wavefront OBJ
+    """
     name = "complexity"
     possible_extensions = [".gpkg", ".obj"]
 
@@ -847,7 +858,7 @@ class ComplexityDifferenceEvaluator(BuildingsEvaluator):
         # to concat_evaluation_results(), to avoid duplicating these columns there. If the regular ComplexityEvaluator
         # gets kicked, the ComplexityDifferenceEvaluator may contribute the numbers of faces instead, too. Then you want
         # to uncomment the first two list entries.
-        diff_metrics = ["diff", "abs_diff", "ratio", "norm_diff", "norm_abs_diff"]
+        diff_metrics = ["in", "out", "diff", "abs_diff", "ratio", "norm_diff", "norm_abs_diff"]
         self.final_columns = [
             # *self.evaluator_1.final_columns,
             # *self.evaluator_2.final_columns,
@@ -905,7 +916,9 @@ class ComplexityDifferenceEvaluator(BuildingsEvaluator):
 
 
 class HausdorffLODSEvaluator(BuildingsEvaluator):
-    """Compute Hausdorff distances between all objects present in multiple pairs of Wavefront OBJ files"""
+    """
+    Compute Hausdorff distances between all objects present in multiple pairs of Wavefront OBJ files
+    """
     name = "hausdorff"
 
     def __init__(
@@ -983,7 +996,9 @@ class HausdorffLODSEvaluator(BuildingsEvaluator):
 
 
 class HausdorffEvaluator(BuildingsEvaluator):
-    """Compute Hausdorff distances between all objects present in two Wavefront OBJ files"""
+    """
+    Compute Hausdorff distances between all objects present in two Wavefront OBJ files
+    """
     name = "hausdorff"
 
     def __init__(
@@ -991,7 +1006,8 @@ class HausdorffEvaluator(BuildingsEvaluator):
             output_base_dirpath: Path | str,
             input_obj_filepath_1: Path | str,
             input_obj_filepath_2: Path | str,
-            bidirectional: bool = False
+            bidirectional: bool = False,
+            verbose: bool = False
     ):
         self.bidirectional = bidirectional
         self.col_suffix = "" if self.bidirectional else "_uni"
@@ -1018,7 +1034,7 @@ class HausdorffEvaluator(BuildingsEvaluator):
         if not quick_skip or not self.split_input_obj_dirpath_2.is_dir():
             split_obj_file(self.input_obj_filepath_2, output_dirpath=self.split_input_obj_dirpath_2, overwrite=False)
 
-    def compute_hausdorff_distances(self, very_verbose=False):
+    def compute_hausdorff_distances(self, verbose=False, very_verbose=False):
         print("\nIdentifying individual OBJ files present in both input datasets ...")
         print("- Directories:")
         print(f"  Input 1: {self.split_input_obj_dirpath_1}")
@@ -1054,9 +1070,11 @@ class HausdorffEvaluator(BuildingsEvaluator):
         else:
             get_hausdorff_distances = get_unidirectional_hausdorff_distances
 
-        print()
+        if verbose or very_verbose:
+            print()
         for i, filename in enumerate(common_filenames):
-            print(f"{filename} ", end="")
+            if verbose or very_verbose:
+                print(f"{filename} ", end="")
             hausdorff_io_dict, hausdorff_oi_dict = get_hausdorff_distances(
                 self.split_input_obj_dirpath_1 / filename,
                 self.split_input_obj_dirpath_2 / filename
@@ -1067,7 +1085,9 @@ class HausdorffEvaluator(BuildingsEvaluator):
             results_dict.update({f"{key}_io{self.col_suffix}": value for key, value in hausdorff_io_dict.items()})
             results_dict.update({f"{key}_oi{self.col_suffix}": value for key, value in hausdorff_oi_dict.items()})
             results.append(results_dict)
-        print("\n\n- All done.")
+        if verbose or very_verbose:
+            print()
+        print("\n- All done.")
 
         self.results_df = pd.DataFrame(results).set_index("file")
         self.results_df.index.name = glb.target_identifier_name
@@ -1081,12 +1101,14 @@ class HausdorffEvaluator(BuildingsEvaluator):
 
 
 class AreaVolumeDifferenceEvaluator(BuildingsEvaluator):
-    """For two input building models, compute area, volume, and difference in area and volume between the two.
+    """
+    For two input building models, compute area, volume, and difference in area and volume between the two.
 
     This Evaluator separately evaluates area and volume of the two input building models in CityJSON format for any
     given LODs using two instances of AreaVolumeEvaluator. Following this, it computes the differences in area and
     volume between corresponding buildings. To enable reuse of the AreaVolumeEvaluators' results, these are stored
-    independently according to the class definition."""
+    independently according to the class definition.
+    """
     name = "area_volume_diff"
 
     def __init__(
