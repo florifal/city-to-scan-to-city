@@ -108,6 +108,12 @@ def point_density_theoretical(pulse_freq_hz: float, velocity: float, altitude: f
 
 
 def swath_width(altitude: int, scan_angle_deg: int) -> int:
+    """
+
+    :param altitude: Flight altitude above ground of the survey
+    :param scan_angle_deg: Unilateral (half) scan angle
+    :return: Width of the surveyed swath
+    """
     return int(0.5 + 2 * altitude * np.tan(scan_angle_deg/180*np.pi))  # int() cuts off decimal places, thus +0.5
 
 
@@ -355,5 +361,5 @@ def has_outliers(data: np.ndarray, threshold: float = 100) -> bool:
     """
     distance_from_median = np.abs(data - np.median(data))
     median_distance_from_median = np.median(distance_from_median)
-    ratio = distance_from_median / median_distance_from_median if median_distance_from_median else np.zeros(len(d))
+    ratio = distance_from_median / median_distance_from_median if median_distance_from_median else np.zeros(len(distance_from_median))
     return (ratio > threshold).any()
