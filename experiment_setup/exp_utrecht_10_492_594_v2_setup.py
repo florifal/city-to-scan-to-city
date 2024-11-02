@@ -95,6 +95,8 @@ default_config["recon_optim_config"].update(
         "recon_optim_target_evaluator": "hausdorff",  # name of an Evaluator subclass
         "recon_optim_target_metric": "rms_min_dist_22_mean",  # name of a summary statistic key
         "recon_optim_target_metric_optimum": "min",  # whether to maximize (max) or minimize (min) for optimality
+        "recon_optim_target_metric_adaptive_penalty": False,  # False: use penalty value; True: half of worst observed
+        "recon_optim_target_metric_penalty_value": 5,  # a value that is poor in terms of the target metric
 
         # Experimental settings for a second target metric whose relative magnitude penalizes the first one
         # "recon_optim_evaluators": ["hausdorff", "complexity_diff"],
