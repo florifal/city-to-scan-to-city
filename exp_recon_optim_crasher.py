@@ -10,6 +10,9 @@ if __name__ == "__main__":
     parser.add_argument("--continue_previous", action="store_true", help="Option to continue aborted run")
     args = parser.parse_args()
 
+    print("\n=========================================================================================================")
+    print("Starting exp_recon_optim_crasher.py to optimize_reconstruction_params() or crash safely.")
+
     # ==================================================================================================================
     # Set up or load the experiment instance and print details about the settings
 
@@ -38,8 +41,6 @@ if __name__ == "__main__":
     # ==================================================================================================================
     # Prepare and perform the optimization step
 
-    print("\n=========================================================================================================")
-    print("Starting exp_recon_optim_crasher.py to optimize_reconstruction_params() or crash safely.")
     print(f"\nArguments received:")
     print(f"- Scenario number: {args.scenario_id}")
     print(f"- Continue: {args.continue_previous}")
