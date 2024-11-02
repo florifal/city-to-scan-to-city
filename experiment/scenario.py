@@ -150,36 +150,44 @@ class Scenario:
     def run_reconstruction_optimization(self, init_points: int | None = None, n_iter: int | None = None):
         """Don't use this. Use Experiment.optimize_reconstruction_params() instead."""
         self.recon_optim.run(init_points, n_iter)
-        optim_params = self.recon_optim.result["params"]
-        # Update scenario config with optimized Geoflow parameters and save it
-        self.reconstruction_config["geoflow_parameters"].update(optim_params)
-        self.save_config()
 
-    def select_optimal_reconstruction_optimization_scenario(self, update_config: bool = True, save_config: bool = True):
+        # Update scenario config with optimized Geoflow parameters and save it
+        # optim_params = self.recon_optim.result["params"]
+        # self.reconstruction_config["geoflow_parameters"].update(optim_params)
+        # self.save_config()
+
+    def select_optimal_reconstruction_optimization_scenario(
+            self,
+            params_filename: str = "best_parameter_set.json",
+            update_config: bool = True,
+            save_config: bool = True
+    ):
+        print("\nIdentifying best parameter set from reconstruction optimization ...")
         self.setup_reconstruction_optimization()
         self.recon_optim.load_optim_experiment()
-        self.recon_optim.select_optimal_scenario()
+        self.recon_optim.select_optimal_scenario(params_filename=params_filename)
 
         print(f"\nIdentified optimal scenario: {self.recon_optim.optimal_scenario.name}")
 
         best_params = self.recon_optim.optimal_scenario.geoflow_parameters
 
         if update_config:
-            print("- Updating reconstruction config with found parameters ...")
-            self.reconstruction_config["geoflow_parameters"] = best_params
-            if save_config:
-                print("- Saving updated config ...")
-                self.save_config()
+            self.set_reconstruction_params(best_params, save_config)
 
     def clear_reconstruction_optimization(self):
         self.recon_optim.clear()
 
-    def load_optimized_reconstruction_params(self, save_config: bool = True):
-        params_filepath = self.recon_optim_output_dirpath / "best_parameter_set.json"
+    def load_optimized_reconstruction_params(
+            self,
+            params_filename: str = "best_parameter_set.json",
+            save_config: bool = True
+    ):
+        params_filepath = self.recon_optim_output_dirpath / params_filename
         print(f"\nReading optimized parameter set from file `{params_filepath.name}` ...")
         with open(params_filepath, "r") as f:
             best_params_json = json.load(f)
 
+        # Handle two different formats in which the data can be stored in this file, the latter being the current one
         if len(best_params_json) == 1:
             best_optim_scenario_name = list(best_params_json.keys())[0]
             best_params = best_params_json[best_optim_scenario_name]
@@ -187,15 +195,15 @@ class Scenario:
             best_optim_scenario_name = best_params_json["best_scenario"]
             best_params = best_params_json["best_parameter_set"]
         else:
-            raise ValueError("Unable to get best reconstruction parameter set from file `best_parameter_set.json`.")
+            raise ValueError(f"Unable to get best reconstruction parameter set from file `{params_filename}`.")
 
         print(f"- Name of best optimization scenario: {best_optim_scenario_name}")
         print(f"- Best parameter values:\n{json.dumps(best_params, indent=2)}")
 
         self.set_reconstruction_params(best_params, save_config=save_config)
 
-    def set_reconstruction_params(self, params: dict, save_config: bool = False):
-        print("\nUpdating reconstruction parameters ...")
+    def set_reconstruction_params(self, params: dict, save_config: bool = True):
+        print("\nUpdating reconstruction config parameters ...")
         self.reconstruction_config["geoflow_parameters"] = params
         if save_config:
             print("- Saving updated config ...")
@@ -222,6 +230,7 @@ class Scenario:
             print(f"\nWARNING: Reconstruction in {self.name} yielded zero buildings.\n")
         else:
             print(f"\nReconstruction in {self.name} yielded {self.n_buildings_reconstructed} buildings.")
+        self.reconstruction_config["recon_execution_time"] = self.reconstruction.executor.execution_time
 
     def clear_reconstruction(self):
         self.reconstruction.clear()
@@ -329,7 +338,9 @@ class Scenario:
             ComplexityDifferenceEvaluator(
                 output_base_dirpath=self.output_evaluation_dirpath,
                 complexity_evaluator_1=input_complexity_evaluator,
-                complexity_evaluator_2=output_complexity_evaluator
+                complexity_evaluator_2=output_complexity_evaluator,
+                reevaluate_1=False,
+                reevaluate_2=False
             ),
             # ComplexityEvaluator(
             #     output_base_dirpath=self.output_evaluation_dirpath,
@@ -339,7 +350,7 @@ class Scenario:
             #     lods=["1.2", "1.3", "2.2"],
             #     ignore_meshes_with_zero_faces=True
             # ),
-            HeightEvaluator(
+            HeightDifferenceEvaluator(
                 output_base_dirpath=self.output_evaluation_dirpath,
                 input_cityjson_filepath_1=self.cityjson_input_filepath,
                 input_cityjson_filepath_2=self.cityjson_output_filepath,
@@ -392,15 +403,15 @@ class Scenario:
         # Unless only the point density evaluator was requested, check if any buildings were reconstructed by calling
         # the property, which runs the GeopackageEvaluator if necessary.
         if evaluator_selection != [PointDensityDatasetEvaluator.name] and self.flag_zero_buildings_reconstructed:
-            print(f"WARNING: Reconstruction in {self.name} yielded zero buildings. Skipping all evaluators "
-                  f"that require reconstructed building models.\n")
+            print(f"\nWARNING: Reconstruction in {self.name} yielded zero buildings. Skipping all evaluators "
+                  f"that require reconstructed building models.")
 
         for evaluator_name in evaluator_selection:
             evaluate = True
             if not reevaluate:
                 try:
                     self.evaluators[evaluator_name].load_results()
-                except:
+                except FileNotFoundError:
                     pass
                 else:
                     print(f"\nEvaluation results for evaluator `{evaluator_name}` already exist. Will not reevaluate.")
@@ -430,6 +441,15 @@ class Scenario:
             evaluator_selection: list[str] | str | None = None,
             ignore_missing: bool = False
     ) -> dict:
+        """
+
+        :param evaluator_selection: Name or names of evaluators whose summary statistics to include
+        :param ignore_missing: Ignore missing results of individual evaluators. (This method calls
+         Evaluator.summary_stats, which conditionally calls Evaluator.compute_summary_stats(), which calls the property
+         Evaluator.results, which attempts to load results if ._results is undefined, which fails if the CSV file with
+         the results does not exist.)
+        :return: Dictionary with every requested evaluator's summary metrics
+        """
         if evaluator_selection is None:
             evaluator_selection = [name for name, evaluator in self.evaluators.items()]
         else:
@@ -576,7 +596,7 @@ class Scenario:
         return self.reconstruction_output_dirpath / Path(self.geoflow_template_json["globals"]["output_obj_lod13"][2])
 
     @property
-    def obj_output_lod22_filepath(self):
+    def obj_output_lod22_filepath(self) -> Path:
         return self.reconstruction_output_dirpath / Path(self.geoflow_template_json["globals"]["output_obj_lod22"][2])
 
     @property
@@ -615,14 +635,13 @@ class Scenario:
     def geoflow_parameters(self):
         return self.reconstruction_config["geoflow_parameters"]
 
-    @property
-    def best_optim_scenario_name(self):
-        params_filepath = self.recon_optim_output_dirpath / "best_parameter_set.json"
+    def get_best_optim_scenario_name(self, params_filename: str = "best_parameter_set.json"):
+        params_filepath = self.recon_optim_output_dirpath / params_filename
         try:
             with open(params_filepath, "r") as f:
                 best_params_json = json.load(f)
         except FileNotFoundError:
-            print(f"\nFile `best_parameter_set.json` for scenario `{self.name}` does not exist")
+            print(f"\nFile `{params_filename}` for scenario `{self.name}` does not exist")
             return ""
         else:
             if len(best_params_json) == 1:
@@ -630,7 +649,7 @@ class Scenario:
             elif len(best_params_json) == 2:
                 best_optim_scenario_name = best_params_json["best_scenario"]
             else:
-                raise ValueError("Unable to get best reconstruction parameter set from file `best_parameter_set.json`.")
+                raise ValueError(f"Unable to get best reconstruction parameter set from file `{params_filename}`.")
             return best_optim_scenario_name
 
 
@@ -667,6 +686,7 @@ class Experiment:
         self.scenario_configs: dict[str, dict] = {}
 
         self._summary_stats: pd.DataFrame | None = None
+        self._results: pd.DataFrame | None = None
 
     def __getitem__(self, item):
         return list(self.scenarios.values())[item]
@@ -707,6 +727,10 @@ class Experiment:
         return self.dirpath / "08_evaluation"
 
     @property
+    def visualization_dirpath(self):
+        return self.dirpath / "09_visualization"
+
+    @property
     def scene_xml_filepath(self):
         return self.scene_dirpath / f"{self.name}_scene.xml"
 
@@ -715,9 +739,18 @@ class Experiment:
         if self._summary_stats is None:
             try:
                 self.load_summary_stats()
-            except:
+            except FileNotFoundError:
                 self.compute_summary_statistics()
         return self._summary_stats
+
+    @property
+    def results(self) -> pd.DataFrame:
+        if self._results is None:
+            try:
+                self.load_final_results()
+            except FileNotFoundError:
+                self.compute_final_results()
+        return self._results
 
     def rename(self, to_name: str, update_scene: bool = False):
         """
@@ -760,9 +793,14 @@ class Experiment:
         self.save(save_scenarios=True)
 
     def load_summary_stats(self, filename: str = "summary_statistics.csv"):
-        print(f"Loading summary statistics from file '{filename}'...")
+        print(f"Loading summary statistics from file `{filename}` ...")
         self._summary_stats = pd.read_csv(self.evaluation_dirpath / filename)
-        self._summary_stats = self._summary_stats.set_index("name")
+        self._summary_stats = self._summary_stats.set_index("scenario")
+
+    def load_final_results(self, filename: str = "evaluation_results.csv"):
+        print(f"Loading evaluation results from file `{filename}` ...")
+        self._results = pd.read_csv(self.evaluation_dirpath / filename)
+        self._results = self._results.set_index(["scenario", "identificatie"])
 
     def setup(self):
         """Call all setup functions for directories, scene, scenario configs, and scenarios"""
@@ -837,6 +875,7 @@ class Experiment:
         recon_optim_output_dirpath = self.recon_optim_dirpath / scenario_name
         reconstruction_output_dirpath = self.reconstruction_dirpath / scenario_name  # reconstruct.json has output/
         evaluation_output_dirpath = self.evaluation_dirpath  # / scenario_name  # todo:remove
+        visualization_dirpath = self.visualization_dirpath / scenario_name
 
         # Create a copy of the default config
         config = copy.deepcopy(self.default_config)
@@ -856,6 +895,7 @@ class Experiment:
         update_config_item(config, "recon_optim_output_dirpath", str(recon_optim_output_dirpath))
         update_config_item(config, "reconstruction_output_dirpath", str(reconstruction_output_dirpath))
         update_config_item(config, "evaluation_output_dirpath", str(evaluation_output_dirpath))
+        update_config_item(config, "visualization_dirpath", str(visualization_dirpath))
 
         # Append the finalized name and config to the lists, and create the Scenario instance
         self.scenario_configs[scenario_name] = copy.deepcopy(config)
@@ -1011,7 +1051,7 @@ class Experiment:
         scenarios = self.parse_scenarios_argument(scenarios)
 
         print(f"\nComputing summary statistics of {len(scenarios)} scenario{plural_s(scenarios)} "
-              f"in experiment {self.name}...")
+              f"in experiment {self.name} ...")
         rows = []
 
         for name, s in scenarios.items():
@@ -1022,9 +1062,10 @@ class Experiment:
             scan_angle_deg = get_config_item(s.config, "scan_angle_deg")
             altitude = get_config_item(s.config, "altitude")
             velocity = get_config_item(s.config, "velocity")
+            recon_execution_time = get_config_item(s.config, "recon_execution_time", not_found_error=False)
 
             cols = {
-                "name": s.name,
+                "scenario": s.name,
                 "target_density": target_density,
                 "error_level": error_level,
                 "pulse_freq_hz": pulse_freq_hz,
@@ -1032,22 +1073,47 @@ class Experiment:
                 "point_spacing_along": point_spacing_along(velocity, scan_freq_hz),
                 "point_spacing_across": point_spacing_across(altitude, scan_angle_deg, pulse_freq_hz, scan_freq_hz),
                 "std_horizontal_error": get_config_item(s.config, "std_horizontal_error"),
-                "std_vertical_error": get_config_item(s.config, "std_vertical_error")
+                "std_vertical_error": get_config_item(s.config, "std_vertical_error"),
+                "recon_execution_time": recon_execution_time
             }
 
             cols.update(s.config["reconstruction_config"]["geoflow_parameters"])
-
-            # todo: remove if no bugs. This case is now handled in Scenario.get_summary_statistics().
-            # # Only add evaluation results to the cols dictionary if any buildings were reconstructed
-            # if not s.flag_zero_buildings_reconstructed:
             cols.update(s.get_summary_statistics(evaluator_selection, ignore_missing=ignore_missing))
 
             rows.append(cols)
 
-        self._summary_stats = pd.DataFrame(rows).set_index("name")
+        self._summary_stats = pd.DataFrame(rows).set_index("scenario")
 
         if save_to_filename is not None:
             self._summary_stats.to_csv(self.evaluation_dirpath / save_to_filename)
+
+    def compute_final_results(
+            self,
+            evaluator_selection: list[str] | str | None = None,
+            save_to_filename: str | None = "evaluation_results.csv",
+            scenarios: list[str] | str | list[int] | int | list[Scenario] | Scenario | None = None,
+    ):
+        scenarios = self.parse_scenarios_argument(scenarios)
+
+        print(f"\nConcatenating final evaluation results of {len(scenarios)} scenario{plural_s(scenarios)} "
+              f"in experiment {self.name} ...")
+
+        results_scenarios = {}
+
+        for name, s in scenarios.items():
+            results_final = pd.concat(
+                [s.evaluators[evaluator_name].results[s.evaluators[evaluator_name].final_columns]
+                 for evaluator_name in evaluator_selection],
+                axis=1
+            )
+            results_scenarios[name] = results_final
+
+        # Concatenating a dictionary with DataFrames as values creates a multi-index from the dictionary keys and the
+        # DataFrames' indices
+        self._results = pd.concat(results_scenarios)
+        self._results.index.names = ["scenario", "identificatie"]
+        if save_to_filename is not None:
+            self._results.to_csv(self.evaluation_dirpath / save_to_filename)
 
     def optimize_reconstruction_params(
             self,
@@ -1209,7 +1275,7 @@ class ReconstructionOptimization:
         # The reconstruction optimization experiment will be located in the parent scenario's directory for
         # reconstruction optimization, in a subdirectory with the scenario's name
         self.experiment_name = self.optim_config["scenario_name"]
-        self.experiment_dirpath = Path(self.optim_config["recon_optim_config"]["recon_optim_output_dirpath"]).parent
+        self.experiment_dirpath = self.output_dirpath.parent
 
         # Remove the prefix "range_" from each parameter name in the parameter space
         self.parameter_space = {k.split("_", 1)[1]: v for k, v in self.config["parameter_space"].items()}
@@ -1221,6 +1287,8 @@ class ReconstructionOptimization:
         self.target_evaluator = self.config["recon_optim_target_evaluator"]
         self.target_metric = self.config["recon_optim_target_metric"]
         self.target_metric_optimum = {"max": 1, "min": -1}[self.config["recon_optim_target_metric_optimum"]]
+        self.target_metric_adaptive_penalty = self.config["recon_optim_target_metric_adaptive_penalty"]
+        self.target_metric_penalty_value = self.config["recon_optim_target_metric_penalty_value"]
 
         self.target_evaluator_2 = self.config["recon_optim_target_evaluator_2"]
         self.target_metric_2 = self.config["recon_optim_target_metric_2"]
@@ -1397,6 +1465,7 @@ class ReconstructionOptimization:
                 and not sum([
                     v == v2 for v2 in self.past_target_values
                 ]) > 1  # larger than one because there is always one equality with the value itself
+                and not v == self.target_metric_penalty_value
             ]
 
         print(f"- Optimizer is now aware of {n_observations_loaded} more observations, "
@@ -1481,19 +1550,22 @@ class ReconstructionOptimization:
 
         # Handle the undesired case that the reconstruction yielded zero buildings
         if timeout or scenario.flag_zero_buildings_reconstructed:
-            # Set the target_value to half of the lowest target value found so far, which should indicate to the
-            # optimizer that this particular parameter combination is bad. (Not including target values from other cases
-            # with zero buildings, which themselves were obtained by halving the lowest target value. Note that,
-            # therefore, this target value is not added to the list of past_target_values.)
-            # The following paragrahp is wrong:
-            # Note that the past_target_values are already computed such that lower values indicate poorer performance,
-            # so dividing by two is sufficient and no additional distinction w.r.t. the target metric's optimum (min or
-            # max) must be made.
-            # Correct is: If we are minimizing a function, i.e., maximizing its negative value, we must multiply the
-            # (worst past) target value by two instead of dividing it by two to indicate a poor performance.
-            # Still only half correct: This only applies for target metrics that are always positive per default, such
-            # that if they must be minimized they are turned negative for the optimizer to maximize them.
-            target_value = min(self.past_target_values) / 2 ** self.target_metric_optimum
+            if self.target_metric_adaptive_penalty:
+                # Set the target_value to half of the lowest target value found so far, which should indicate to the
+                # optimizer that this particular parameter combination is bad. (Not including target values from other cases
+                # with zero buildings, which themselves were obtained by halving the lowest target value. Note that,
+                # therefore, this target value is not added to the list of past_target_values.)
+                # The following paragrahp is wrong:
+                # Note that the past_target_values are already computed such that lower values indicate poorer performance,
+                # so dividing by two is sufficient and no additional distinction w.r.t. the target metric's optimum (min or
+                # max) must be made.
+                # Correct is: If we are minimizing a function, i.e., maximizing its negative value, we must multiply the
+                # (worst past) target value by two instead of dividing it by two to indicate a poor performance.
+                # Still only half correct: This only applies for target metrics that are always positive per default, such
+                # that if they must be minimized they are turned negative for the optimizer to maximize them.
+                target_value = min(self.past_target_values) / 2 ** self.target_metric_optimum
+            else:
+                target_value = self.target_metric_penalty_value * self.target_metric_optimum
 
         else:
             scenario.setup_evaluation(lods=self.target_lod)
@@ -1535,7 +1607,49 @@ class ReconstructionOptimization:
         self.iter_count += 1
         return target_value
 
-    def select_optimal_scenario(self):
+    def select_optimal_scenario(
+            self,
+            range_from_best: float = 0.1,
+            n_buildings_min: int = 80,
+            params_filename: str = "best_parameter_set.json"
+    ):
+        additional_evaluators = ["complexity", "geoflow_output"]
+        reevaluate = False
+
+        print(f"\nSelecting optimal scenario from all optimization scenarios "
+              f"in optimization experiment `{self.experiment_name}`.")
+        print("Running additional evaluators for the optimization experiment ...")
+
+        self.optim_experiment.run_steps(Scenario.setup_evaluation, lods=self.target_lod)
+        self.optim_experiment.run_steps(
+            Scenario.run_evaluation,
+            evaluator_selection=additional_evaluators,
+            reevaluate=reevaluate
+        )
+        self.optim_experiment.compute_summary_statistics(
+            evaluator_selection=[self.target_evaluator, *additional_evaluators],
+            save_to_filename="summary_statistics_for_optim_selection.csv",
+        )
+        stats = self.optim_experiment.summary_stats
+
+        # Pre-select only those optimization scenarios that yielded a minimum number of reconstructed buildings
+        stats = stats[stats[f"gpkg_unique_{self.target_lod.replace('.', '')}"].astype(int) >= n_buildings_min]
+
+        optimal_scenario_name = stats[
+            stats.rms_min_dist_22_mean <= stats.rms_min_dist_22_mean.min() * (1+range_from_best)
+            ].n_faces_22_mean.idxmin()
+
+        print(f"\nScenario with lowest face number within {range_from_best*100}% range of optimum: {optimal_scenario_name}")
+
+        self.optimal_scenario = self.optim_experiment.scenarios[optimal_scenario_name]
+
+        print(f"- Saving best parameter set as `{params_filename}` ...")
+        with open(self.output_dirpath / params_filename, "w", encoding="utf-8") as f:
+            json.dump({"best_scenario": self.optimal_scenario.name,
+                       "best_parameter_set": self.optimal_scenario.geoflow_parameters},
+                      f, indent=4, ensure_ascii=False)
+
+    def select_optimal_scenario_multirank(self, params_filename: str = "best_parameter_set.json"):
         target_metric_optimum = self.config["recon_optim_target_metric_optimum"]
         target_metric_weight = 1
 
@@ -1568,7 +1682,8 @@ class ReconstructionOptimization:
 
         reevaluate = False  # Run evaluators again if a CSV file with their results already exists? Tested individually.
 
-        print(f"\nSelecting optimal scenario from all optimization scenarios in optimization experiment `{self.experiment_name}`.")
+        print(f"\nSelecting optimal scenario from all optimization scenarios "
+              f"in optimization experiment `{self.experiment_name}`.")
         print("Running additional evaluators for the optimization experiment ...")
 
         # --------------------------------------------------------------------------------------------------------------
@@ -1724,8 +1839,8 @@ class ReconstructionOptimization:
 
         self.optimal_scenario = self.optim_experiment.scenarios[optimal_scenario_name]
 
-        print("- Saving best parameter set as `best_parameter_set.json` ...")
-        with open(self.output_dirpath / "best_parameter_set.json", "w", encoding="utf-8") as f:
+        print(f"- Saving best parameter set as `{params_filename}` ...")
+        with open(self.output_dirpath / params_filename, "w", encoding="utf-8") as f:
             json.dump({"best_scenario": self.optimal_scenario.name,
                        "best_parameter_set": self.optimal_scenario.geoflow_parameters},
                       f, indent=4, ensure_ascii=False)
