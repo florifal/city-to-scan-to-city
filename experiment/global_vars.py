@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # ======================================================================================================================
-# HELIOS++
+# HELIOS++ and Point Cloud Processing
 # ======================================================================================================================
 
 helios_dirpath = Path.home() / "Apps" / "helios-plusplus-win"
@@ -13,6 +13,8 @@ helios_platforms_filepath = str(helios_dirpath / "data" / "platforms.xml")
 helios_scanners_filepath = str(helios_dirpath / "data" / "scanners_als.xml")
 helios_survey_template_filepath = str(Path(__file__).parent / "helios" / "survey_template.xml")
 
+num_neighbors_nn_distance = 4
+
 # ======================================================================================================================
 # bayes_opt BayesianOptimization
 # ======================================================================================================================
@@ -20,7 +22,7 @@ helios_survey_template_filepath = str(Path(__file__).parent / "helios" / "survey
 bo_target_value_equality_rel_tolerance = 1e-16
 
 # ======================================================================================================================
-# 3D RECONSTRUCTION AND GEOFLOW
+# 3D Reconstruction and Geoflow
 # ======================================================================================================================
 
 recon_vertices_outlier_threshold = 1e2
@@ -83,6 +85,21 @@ gf_param_normal_estimate_k = "r_normal_k"
 gf_param_skip_lod12 = "skip_lod12"
 gf_param_skip_lod13 = "skip_lod13"
 gf_param_skip_lod22 = "skip_lod22"
+
+# Geoflow parameter names as used in the written thesis
+gf_param_names_thesis = {
+    gf_param_plane_epsilon: "plane_epsilon",
+    gf_param_plane_k: "plane_k",
+    gf_param_plane_min_points: "plane_min_points",
+    gf_param_plane_normal_angle: "plane_normal_angle",
+    gf_param_normal_estimate_k: "plane_normal_k",
+    gf_param_thres_alpha: "alpha_threshold",
+    gf_param_line_epsilon: "line_epsilon",
+    gf_param_thres_reg_line_dist: "line_reg_distance",
+    gf_param_thres_reg_line_ext: "line_reg_extension",
+    gf_param_optimization_data_term: "optim_data_term"
+}
+
 
 # Parameter data types
 gf_integer_params = [gf_param_plane_k, gf_param_plane_min_points, gf_param_normal_estimate_k]
