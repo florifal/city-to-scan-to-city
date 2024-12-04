@@ -6,7 +6,7 @@ This pipeline was developed to conduct experiments that investigate how point cl
 
 ## Why?
 
-From a technical perspective, the quality of 3D building reconstruction depends on many factors related, for instance, to the reconstruction method and the input data quality. Much work has been dedicated to the development and comparison of different reconstruction methods, but few studies have explored the significance of the input data quality. The results of this project help to close this gap. Moreover, a pipeline such as this can also provide insights that support the improvement of reconstruction methods.
+From a technical perspective: The quality of 3D building reconstruction depends on many factors related, for instance, to the reconstruction method and the input data quality. Much work has been dedicated to the development and comparison of different reconstruction methods, but few studies have explored the significance of the input data quality. The results of this project help to close this gap. Moreover, a pipeline such as this can also provide insights that support the improvement of reconstruction methods.
 
 From an economic point of view, the acquisition of point cloud data for the purpose of 3D building reconstruction is costly. Knowledge of the quantitative relationship of point cloud properties and reconstruction quality facilitates a well-informed survey design to optimize the latter with respect to (the acquisition cost of) the former, or to identify levels of the former to meet requirements in the latter.
 
