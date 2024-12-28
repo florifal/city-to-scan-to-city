@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     e.run_steps([Scenario.process_point_cloud])
 
-    Evaluate the point cloud properties to decide on how to proceed with the reconstruction optimization
+    # Evaluate the point cloud properties to decide on how to proceed with the reconstruction optimization
 
     e.run_steps(Scenario.setup_evaluation)
     e.run_steps(Scenario.run_evaluation, evaluator_selection="point_density")
@@ -130,10 +130,11 @@ if __name__ == "__main__":
         for k in [k2.split("_", 1)[1] for k2 in glb.geoflow_optim_parameter_space_narrow_2.keys()]
     }
 
+    scenario_to_optimize = "scenario_055"
+    scenario_to_optimize_idx = 55
+
     # A: Do it the traditional way
 
-    # scenario_to_optimize = "scenario_055"
-    # scenario_to_optimize_idx = 55
     # e.run_steps([Scenario.setup_reconstruction_optimization, Scenario.prepare_reconstruction_optimization],
     #             scenarios=scenario_to_optimize)
     # e[scenario_to_optimize_idx].recon_optim.optimizer.probe(
@@ -145,7 +146,7 @@ if __name__ == "__main__":
     # B: Use the newer function
 
     e.optimize_reconstruction_params(
-        sequence=[55],
+        sequence=[scenario_to_optimize_idx],
         init_points=40,
         n_iter=160,
         recon_timeout=600,
