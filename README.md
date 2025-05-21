@@ -55,4 +55,4 @@ To quantify this effect, the evaluation module of the pipeline is capable of com
 - Hausdorff distance (i.e. maximum minimum distance) and RMS minimum distance between models
 - Intersection over union
 
- Following this, the results of these metrics are analysed both on an aggregated level across all scenarios as well as on the level of the metric distributions within and between the scenarios. For details of the evaluation, please refer to the [thesis](resources/Master's%20Thesis%20Florian%20Faltermeier%20v1.1.pdf).
+ Following this, the results of these metrics are analysed both on an aggregate level across all scenarios as well as on the level of the metric distributions within and between the scenarios. For details of the evaluation, please refer to the [thesis](resources/Master's%20Thesis%20Florian%20Faltermeier%20v1.1.pdf).
