@@ -39,7 +39,7 @@ if __name__ == "__main__":
     for s_id in s_ids:
         command = [
             "python",
-            Path(r"C:\Users\Florian\OneDrive - TUM\Universität\24\Master's Thesis\Code\city-to-scan-to-city\exp_survey_crasher.py"),
+            Path(r"C:\Users\Florian\OneDrive - TUM\Universität\24\Master's Thesis\Code\city-to-scan-to-city\exp_survey_handler.py"),
             str(s_id)
         ]
     
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     for s_id in processing_sequence_part:
         command = [
             "python",
-            Path(r"C:\Users\Florian\OneDrive - TUM\Universität\24\Master's Thesis\Code\city-to-scan-to-city\exp_recon_optim_crasher.py"),
+            Path(r"C:\Users\Florian\OneDrive - TUM\Universität\24\Master's Thesis\Code\city-to-scan-to-city\exp_recon_optim_handler.py"),
             "--scenario_id",
             str(s_id)
         ]
